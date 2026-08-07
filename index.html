@@ -556,14 +556,13 @@ function viewLogin() {
           onkeydown="if(event.key==='Enter')doLogin()">
         <div id="login-err" class="hidden text-red-500 text-sm mb-3"></div>
         <button onclick="doLogin()" class="btn-primary w-full py-2.5 rounded-xl font-bold text-sm">Ingresar</button>
-        <p class="text-xs text-gray-500 mt-4">Contraseña por defecto: <b>x3padel</b></p>
       </div>
     </div>`;
 }
 
 function doLogin() {
   const pass = document.getElementById('login-pass').value;
-  const stored = localStorage.getItem('x3padel_pass') || 'x3padel';
+  const stored = localStorage.getItem('x3padel_pass') || 'x3padelsebastian';
   if (pass === stored) { adminOk = true; render(); }
   else {
     const err = document.getElementById('login-err');
