@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>X3 Padel – Torneos</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif; }
     input[type=number]::-webkit-inner-spin-button { opacity: 1; }
@@ -65,17 +67,72 @@
 // ═══════════════════════════════════════════════════════════════════
 const DB_KEY = 'x3padel_v2';
 
-function loadDB() {
-  try {
-    const raw = localStorage.getItem(DB_KEY);
-    if (!raw) return { tournaments:[], pairs:[], matches:[] };
-    return JSON.parse(raw);
-  } catch(e) { return { tournaments:[], pairs:[], matches:[] }; }
+// ── Firebase ────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyBRhvq41jhRX8BMe99jsk6vkpvN7yDH3tQ",
+  authDomain: "torneos-x3-padel-sunchales.firebaseapp.com",
+  databaseURL: "https://torneos-x3-padel-sunchales-default-rtdb.firebaseio.com",
+  projectId: "torneos-x3-padel-sunchales",
+  storageBucket: "torneos-x3-padel-sunchales.firebasestorage.app",
+  messagingSenderId: "562099829218",
+  appId: "1:562099829218:web:71595c75ac45d85e2761bb"
+};
+firebase.initializeApp(firebaseConfig);
+const fbRef = firebase.database().ref(DB_KEY);
+
+// Carga instantánea desde localStorage (caché), Firebase actualiza en segundos
+let db = (() => {
+  try { const r = localStorage.getItem(DB_KEY); if (r) return JSON.parse(r); } catch(e) {}
+  return { tournaments:[], pairs:[], matches:[] };
+})();
+
+function saveDB() {
+  try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
+  fbRef.set(db).catch(err => console.error('Firebase error:', err));
 }
-function saveDB() { localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+
+// Listener en tiempo real: todos los dispositivos se actualizan solos
+fbRef.on('value', snapshot => {
+  const data = snapshot.val();
+  const fresh = (data && data.tournaments) ? data : { tournaments:[], pairs:[], matches:[] };
+  if (JSON.stringify(fresh) !== JSON.stringify(db)) {
+    db = fresh;
+    try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
+    if (document.getElementById('app')) render();
+  }
+});
+
+function exportDB() {
+  const json = JSON.stringify(db, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const date = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `x3padel-backup-${date}.json`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function importDB(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.tournaments || !data.pairs || !data.matches) {
+        alert('Archivo inválido: no parece un backup de X3 Padel.'); return;
+      }
+      if (!confirm(`¿Importar backup? Esto REEMPLAZA todos los datos actuales.\n\nTorneos en el backup: ${data.tournaments.length}\nParejas: ${data.pairs.length}`)) return;
+      db = data;
+      saveDB(); render();
+      alert('✅ Datos importados correctamente.');
+    } catch(err) { alert('Error al leer el archivo: ' + err.message); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
 function uid() { return Math.random().toString(36).slice(2,9) + Date.now().toString(36); }
 
-let db = loadDB();
+let _dbReady = true; // db initialized above from cache
 
 // ═══════════════════════════════════════════════════════════════════
 //  ROUTER
@@ -202,7 +259,7 @@ function viewHome() {
               : (t0.playDays && t0.playDays.length > 0 ? t0.playDays
                 : ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']);
             const allowTwo = days.length >= 4;
-            const opts = days.map(d=>`<option value="${d}">${d}</option>`).join('');
+            const opts = days.map(d=>`<option value="${d}">${formatDay(d)}</option>`).join('');
             return `
               <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">
                 ${allowTwo ? 'Primer día que no podés jugar (opcional)' : '¿Hay algún día que no podés jugar?'}
@@ -604,8 +661,11 @@ function viewAdmin() {
     <div>
       <div class="flex items-center justify-between mb-5">
         <h2 class="text-xl font-bold text-gray-800">Panel de Administración</h2>
-        <div class="flex gap-2">
+        <div class="flex gap-2 flex-wrap">
           <button onclick="toggleForm('form-new-t')" class="btn-primary px-4 py-2 rounded-xl text-sm font-bold">+ Nuevo torneo</button>
+          <button onclick="exportDB()" class="btn-sec px-4 py-2 rounded-xl text-sm font-medium" title="Descargar backup de todos los datos">💾 Exportar</button>
+          <button onclick="document.getElementById('import-file').click()" class="btn-sec px-4 py-2 rounded-xl text-sm font-medium" title="Cargar backup">📂 Importar</button>
+          <input id="import-file" type="file" accept=".json" class="hidden" onchange="importDB(this)">
           <button onclick="adminOk=false;nav('home')" class="btn-sec px-4 py-2 rounded-xl text-sm font-medium">Salir</button>
         </div>
       </div>
@@ -638,11 +698,7 @@ function viewAdmin() {
             <div id="nt-slots" class="space-y-2 mb-2">
               <div class="slot-row flex items-center gap-2">
                 <span class="slot-label text-xs font-bold text-gray-500 w-14 flex-shrink-0">Zona A</span>
-                <select class="slot-day border border-gray-200 rounded-lg px-2 py-1.5 text-sm flex-1 outline-none">
-                  <option value="">Sin horario</option>
-                  <option>Lunes</option><option>Martes</option><option>Miércoles</option>
-                  <option>Jueves</option><option>Viernes</option><option>Sábado</option><option>Domingo</option>
-                </select>
+                <input type="date" class="slot-day border border-gray-200 rounded-lg px-2 py-1.5 text-sm flex-1 outline-none">
                 <input type="time" value="20:00" class="slot-time border border-gray-200 rounded-lg px-2 py-1 text-sm w-28 outline-none">
                 <button type="button" onclick="removeZoneSlot(this)" class="text-gray-500 hover:text-red-500 text-lg leading-none flex-shrink-0">✕</button>
               </div>
@@ -724,15 +780,11 @@ function addZoneSlot(day, time) {
   const sc = document.getElementById('nt-slots'); if (!sc) return;
   const idx = sc.querySelectorAll('.slot-row').length;
   const letter = String.fromCharCode(65 + idx);
-  const days = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
   const div = document.createElement('div');
   div.className = 'slot-row flex items-center gap-2';
   div.innerHTML = `
     <span class="slot-label text-xs font-bold text-gray-500 w-14 flex-shrink-0">Zona ${letter}</span>
-    <select class="slot-day border border-gray-200 rounded-lg px-2 py-1.5 text-sm flex-1 outline-none">
-      <option value="">Sin horario</option>
-      ${days.map(d=>`<option value="${d}"${d===(day||'')?'  selected':''} >${d}</option>`).join('')}
-    </select>
+    <input type="date" value="${day||''}" class="slot-day border border-gray-200 rounded-lg px-2 py-1.5 text-sm flex-1 outline-none">
     <input type="time" value="${time||'20:00'}" class="slot-time border border-gray-200 rounded-lg px-2 py-1 text-sm w-28 outline-none">
     <button type="button" onclick="removeZoneSlot(this)" class="text-gray-500 hover:text-red-500 text-lg leading-none flex-shrink-0">✕</button>
   `;
@@ -780,7 +832,7 @@ function viewAdminPairs() {
         <div class="text-xs text-gray-600 flex gap-3 flex-wrap">
           ${p.ph?`<span>📱 ${p.ph}</span>`:''}
           ${p.zone?`<span class="font-medium" style="color:#5a9900">Zona ${p.zone}${p.pos}</span>`:''}
-          ${getPairUnavailDays(p).map(d=>`<span class="text-red-500">🚫${d}</span>`).join('')}
+          ${getPairUnavailDays(p).map(d=>`<span class="text-red-500">🚫${formatDay(d)}</span>`).join('')}
           <span>${new Date(p.ts).toLocaleDateString('es-AR')}</span>
         </div>
       </div>
@@ -797,7 +849,7 @@ function viewAdminPairs() {
           const allowTwo = uniqueDays.length >= 4;
           const dayOpts = (placeholder) => `<option value="">${placeholder}</option>` +
             (uniqueDays.length > 0 ? uniqueDays : ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'])
-              .map(d=>`<option>${d}</option>`).join('');
+              .map(d=>`<option value="${d}">${formatDay(d)}</option>`).join('');
           return `
           <div class="flex flex-wrap gap-3">
             <input id="ap1" type="text" placeholder="Jugadora 1" class="field flex-1 min-w-36"
@@ -941,7 +993,7 @@ function viewAdminZones() {
                   <span class="px-1.5 py-0.5 rounded text-xs font-bold flex-shrink-0"
                         style="background:#edfad0;color:#3d6600">${zone.letter}${p.pos}</span>
                   <span class="text-sm text-gray-800 truncate flex-1">${p.p1} / ${p.p2}</span>
-                  ${getPairUnavailDays(p).map(d=>`<span class="text-xs text-red-400 flex-shrink-0" title="No puede jugar ${d}">🚫${d.slice(0,3)}</span>`).join('')}
+                  ${getPairUnavailDays(p).map(d=>`<span class="text-xs text-red-400 flex-shrink-0" title="No puede jugar ${formatDay(d)}">🚫${formatDay(d).slice(0,6)}</span>`).join('')}
                   <button onclick="openEditPairModal('${p.id}')" class="flex-shrink-0 text-gray-400 hover:text-gray-600 text-sm leading-none px-1" title="Editar pareja">✏️</button>
                 </div>`).join('')}
               ${zSched ? `
@@ -1395,13 +1447,40 @@ function genInitialBracket() {
     if (stand[0]) firsts.push({ rank:1, zone:zone.letter, pair:stand[0].pair });
   });
 
-  // Zone seconds in Z→A order (last-zone second = best among seconds)
-  const seconds = [];
-  [...zones].reverse().forEach(zone => {
-    const ms = zoneMatches(t.id, zone.letter);
-    const stand = standings(zone.pairs, ms);
-    if (stand[1]) seconds.push({ rank:2, zone:zone.letter, pair:stand[1].pair });
+  // Zone seconds – reordered so each zone first plays the second from its
+  // "mirror" zone in the bracket. Ensures zone-mates (A1 & A2) end up on
+  // opposite halves and can only meet in the final.
+  // Rule: first at bracket position p plays second from zone at position (nF+1-p).
+  const rawSeconds = [];
+  zones.forEach(zone => {
+    const ms2 = zoneMatches(t.id, zone.letter);
+    const st2  = standings(zone.pairs, ms2);
+    if (st2[1]) rawSeconds.push({ rank:2, zone:zone.letter, pair:st2[1].pair });
   });
+  const nF = firsts.length;
+  const seconds = [];
+  if (rawSeconds.length === nF && nF >= 2) {
+    const soF    = generateBracketSeedOrder(nF);
+    const zToSec = {};
+    rawSeconds.forEach(s => { zToSec[s.zone] = s; });
+    const ordered = new Array(nF).fill(null);
+    firsts.forEach((first, fi) => {
+      const bp   = soF.indexOf(fi + 1) + 1;   // bracket position of this first
+      const mBp  = nF + 1 - bp;               // mirror position in opposite half
+      const mZone = firsts[soF[mBp - 1] - 1].zone; // zone at mirror position
+      ordered[nF - 1 - fi] = zToSec[mZone] || null;
+    });
+    const usedZones = new Set();
+    ordered.forEach(s => { if (s) { seconds.push(s); usedZones.add(s.zone); } });
+    rawSeconds.forEach(s => { if (!usedZones.has(s.zone)) seconds.push(s); });
+  } else {
+    // Fallback: original Z→A order
+    [...zones].reverse().forEach(zone => {
+      const ms2 = zoneMatches(t.id, zone.letter);
+      const st2  = standings(zone.pairs, ms2);
+      if (st2[1]) seconds.push({ rank:2, zone:zone.letter, pair:st2[1].pair });
+    });
+  }
 
   const seeded = [...firsts, ...seconds]; // seeds 1..n in rank order
   if (seeded.length < 2) { alert('Necesitás al menos 2 parejas clasificadas'); return; }
@@ -1671,13 +1750,23 @@ function getMatchTime(t, letter, matchIndex) {
   return addHours(baseTime, matchIndex);
 }
 
+function formatDay(d) {
+  if (!d) return '';
+  // ISO date format YYYY-MM-DD → "Sáb 15/09"
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return d; // backward compat: old format like "Lunes"
+  const date = new Date(d + 'T12:00:00');
+  const names = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  return `${names[date.getDay()]} ${m[3]}/${m[2]}`;
+}
+
 function getZoneSchedule(t, letter) {
   const zi = letter.charCodeAt(0) - 65;
   // New format: playSlots per zone
   if (t.playSlots && t.playSlots.length > 0) {
     const slot = t.playSlots[zi];
     if (!slot || !slot.day) return null;
-    return `${slot.day} ${slot.time || '20:00'}`;
+    return `${formatDay(slot.day)} ${slot.time || '20:00'}`;
   }
   // Backward compat: old playDays + playTime
   if (t.playDays && t.playDays.length > 0) {
