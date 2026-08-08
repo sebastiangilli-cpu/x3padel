@@ -94,7 +94,12 @@ function saveDB() {
 // Listener en tiempo real: todos los dispositivos se actualizan solos
 fbRef.on('value', snapshot => {
   const data = snapshot.val();
-  const fresh = (data && data.tournaments) ? data : { tournaments:[], pairs:[], matches:[] };
+  // Firebase omits empty arrays; always normalize to arrays
+  const fresh = {
+    tournaments: (data && Array.isArray(data.tournaments)) ? data.tournaments : (data && data.tournaments ? Object.values(data.tournaments) : []),
+    pairs:       (data && Array.isArray(data.pairs))       ? data.pairs       : (data && data.pairs       ? Object.values(data.pairs)       : []),
+    matches:     (data && Array.isArray(data.matches))     ? data.matches     : (data && data.matches     ? Object.values(data.matches)     : []),
+  };
   if (JSON.stringify(fresh) !== JSON.stringify(db)) {
     db = fresh;
     try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
@@ -683,8 +688,8 @@ function viewAdmin() {
         </div>` :
         `<div class="space-y-4">
           ${db.tournaments.slice().reverse().map(t => {
-            const pCount = db.pairs.filter(p=>p.tId===t.id && !p.suplente).length;
-            const sCount = db.pairs.filter(p=>p.tId===t.id && p.suplente).length;
+            const pCount = (db.pairs||[]).filter(p=>p.tId===t.id && !p.suplente).length;
+            const sCount = (db.pairs||[]).filter(p=>p.tId===t.id && p.suplente).length;
             const statusBadge = {
               inscripciones: '<span class="badge-green">🟢 Inscripciones</span>',
               en_curso:      '<span class="badge-blue">🔵 En curso</span>',
