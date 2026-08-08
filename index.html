@@ -91,14 +91,29 @@ function saveDB() {
   fbRef.set(db).catch(err => console.error('Firebase error:', err));
 }
 
+// Normaliza un valor que Firebase puede devolver como objeto {0:x,1:y} en lugar de array
+function normArr(v, fallback) {
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === 'object') return Object.values(v);
+  return fallback !== undefined ? fallback : [];
+}
+// Normaliza sets de partidos: [[a,b],[a,b],[a,b]]
+function normSets(sets) {
+  const arr = normArr(sets, [[null,null],[null,null],[null,null]]);
+  return arr.map(s => {
+    const sa = normArr(s, [null,null]);
+    return [sa[0]??null, sa[1]??null];
+  });
+}
+
 // Listener en tiempo real: todos los dispositivos se actualizan solos
 fbRef.on('value', snapshot => {
   const data = snapshot.val();
   // Firebase omits empty arrays; always normalize to arrays
   const fresh = {
-    tournaments: (data && Array.isArray(data.tournaments)) ? data.tournaments : (data && data.tournaments ? Object.values(data.tournaments) : []),
-    pairs:       (data && Array.isArray(data.pairs))       ? data.pairs       : (data && data.pairs       ? Object.values(data.pairs)       : []),
-    matches:     (data && Array.isArray(data.matches))     ? data.matches     : (data && data.matches     ? Object.values(data.matches)     : []),
+    tournaments: normArr(data?.tournaments),
+    pairs:       normArr(data?.pairs),
+    matches:     normArr(data?.matches).map(m => ({ ...m, sets: normSets(m.sets) })),
   };
   if (JSON.stringify(fresh) !== JSON.stringify(db)) {
     db = fresh;
@@ -931,9 +946,11 @@ function viewAdminZones() {
             <b>${nZones}</b> zona${nZones!==1?'s':''} de <b>${t.ppz}</b> c/u
             ${pairs.length % t.ppz !== 0 ? `<span class="text-orange-500 ml-1">(última zona: ${pairs.length%t.ppz} pareja${pairs.length%t.ppz!==1?'s':''})</span>` : ''}
           </div>
-          <div class="flex gap-2 ml-auto">
+          <div class="flex gap-2 ml-auto flex-wrap">
             <button onclick="autoZones()" class="btn-primary px-4 py-2 rounded-xl text-sm font-bold">🔀 Asignar automáticamente</button>
             ${assigned.length>0?`<button onclick="clearZones()" class="btn-sec px-4 py-2 rounded-xl text-sm font-medium">↺ Limpiar</button>`:''}
+            ${assigned.length>0 && t.status==='inscripciones' ? `<button onclick="publishZones('${t.id}')" class="px-4 py-2 rounded-xl text-sm font-bold" style="background:#B8FF00;color:#1A2500">🚀 Confirmar y publicar</button>` : ''}
+            ${assigned.length>0 && t.status==='en_curso' ? `<span class="px-3 py-2 rounded-xl text-xs font-bold" style="background:#edfad0;color:#3d6600">✅ Publicado</span>` : ''}
           </div>
         </div>
       </div>
@@ -1077,6 +1094,12 @@ function mkMatch(tId, phase, zone, matchNum, p1Id, p2Id, pair1Label) {
     sets: [[null,null],[null,null],[null,null]],
     winner: null,
   });
+}
+
+function publishZones(tId) {
+  const t = db.tournaments.find(t=>t.id===tId); if (!t) return;
+  t.status = 'en_curso';
+  saveDB(); render();
 }
 
 function clearZones() {
