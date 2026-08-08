@@ -327,11 +327,24 @@ function doRegister() {
   document.getElementById('reg-p1').value = '';
   document.getElementById('reg-p2').value = '';
   document.getElementById('reg-ph').value = '';
-  msg.className += isSuplente ? ' bg-orange-50 text-orange-700' : ' bg-green-50 text-green-700';
-  msg.textContent = isSuplente
-    ? '📋 Inscripción como suplente confirmada. Te avisamos si queda lugar.'
-    : '🎉 ¡Inscripción confirmada!';
-  setTimeout(render, 2200);
+
+  showRegModal(p1, p2, isSuplente);
+}
+
+function showRegModal(p1, p2, isSuplente) {
+  const modal = document.getElementById('reg-modal');
+  document.getElementById('reg-modal-icon').textContent  = isSuplente ? '📋' : '🎉';
+  document.getElementById('reg-modal-title').textContent = isSuplente ? '¡Anotados como suplentes!' : '¡Inscripción confirmada!';
+  document.getElementById('reg-modal-pair').textContent  = `${p1} / ${p2}`;
+  document.getElementById('reg-modal-msg').textContent   = isSuplente
+    ? 'Quedaron en lista de espera. Los contactamos si se libera un lugar.'
+    : 'Quedaron inscriptos en el torneo. ¡Buena suerte!';
+  modal.classList.remove('hidden');
+}
+
+function closeRegModal() {
+  document.getElementById('reg-modal').classList.add('hidden');
+  render();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -2127,6 +2140,17 @@ function downloadViewerPhoto() {
         <button onclick="saveEditPair()" class="flex-1 py-3 rounded-xl text-sm font-bold btn-primary">Guardar</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ══ REGISTRO CONFIRMACIÓN MODAL ═════════════════════════════════════════ -->
+<div id="reg-modal" onclick="closeRegModal()" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center" style="background:rgba(0,0,0,0.65)">
+  <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-sm mx-0 sm:mx-4 text-center px-6 py-8" onclick="event.stopPropagation()">
+    <div id="reg-modal-icon" class="text-5xl mb-3"></div>
+    <h2 id="reg-modal-title" class="text-xl font-black text-gray-900 mb-2"></h2>
+    <p id="reg-modal-pair" class="text-base font-bold mb-1" style="color:#3d6600"></p>
+    <p id="reg-modal-msg" class="text-sm text-gray-500 mb-7"></p>
+    <button onclick="closeRegModal()" class="w-full py-3 rounded-xl font-bold text-sm" style="background:#B8FF00;color:#1A2500">¡Listo!</button>
   </div>
 </div>
 
