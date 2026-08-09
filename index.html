@@ -510,7 +510,7 @@ function publicZoneCard(t, zone) {
     </div>`;
 }
 
-function bracketMatchCard(m) {
+function bracketMatchCard(m, phase) {
   const sets = m.sets.filter(([a,b])=>a!==null&&b!==null&&!(a===0&&b===0));
   const p1Sets = sets.map(([a])=>a);
   const p2Sets = sets.map(([,b])=>b);
@@ -519,8 +519,9 @@ function bracketMatchCard(m) {
     : '';
   const p1Win = m.winner==='p1', p2Win = m.winner==='p2';
   const schedLabel = m.matchDay ? `${m.matchDay}${m.matchTime?' '+m.matchTime+'hs':''}` : null;
+  const phColor = PHASE_COLORS[phase||m.phase] || '#6b7280';
   return `
-    <div class="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+    <div class="rounded-xl overflow-hidden shadow-sm" style="border:2px solid ${phColor}">
       ${schedLabel ? `<div class="px-3 py-1 text-xs font-bold text-center" style="background:#f0fde4;color:#3d6600">📅 ${schedLabel}</div>` : ''}
       <div class="flex items-center gap-2 px-3 py-2.5 ${p1Win?'':'bg-white'}" style="${p1Win?'background:#1A2500':''}">
         ${m.p1Seed?`<span class="text-xs font-bold flex-shrink-0 px-1 rounded" style="${p1Win?'background:#2d4000;color:#B8FF00':'background:#edfad0;color:#3d6600'}">${m.p1Seed}</span>`:''}
@@ -537,6 +538,14 @@ function bracketMatchCard(m) {
       </div>
     </div>`;
 }
+
+const PHASE_COLORS = {
+  '16avos': '#3b82f6',
+  '8avos':  '#8b5cf6',
+  'cuartos':'#f97316',
+  'semis':  '#f59e0b',
+  'final':  '#ef4444',
+};
 
 function publicBracket(t, bm, champion) {
   const ORDER = ['16avos','8avos','cuartos','semis','final'];
@@ -567,8 +576,8 @@ function publicBracket(t, bm, champion) {
           return `
             <div>
               <div class="flex items-center gap-2 mb-3">
-                <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full text-white" style="background:${phDone?'#1A2500':'#6b7280'}">${BRACKET_NAMES[ph]||ph}</span>
-                ${phDone?`<span class="text-xs font-bold" style="color:#78C832">✓ Ronda completa</span>`:''}
+                <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full text-white" style="background:${PHASE_COLORS[ph]||'#6b7280'}">${BRACKET_NAMES[ph]||ph}</span>
+                ${phDone?`<span class="text-xs font-bold" style="color:#ef4444">✓ Ronda completa</span>`:''}
               </div>
               <div class="grid sm:grid-cols-2 gap-3">
                 ${phMatches.map((m,mi) => `
@@ -577,7 +586,7 @@ function publicBracket(t, bm, champion) {
                       <span class="text-xs text-gray-600 font-medium">Cruce ${mi+1}</span>
                       ${m.photo?`<button onclick="openPhotoViewer('${m.id}')" class="text-sm leading-none ml-auto" title="Ver foto del partido">📷 Foto</button>`:''}
                     </div>
-                    ${bracketMatchCard(m)}
+                    ${bracketMatchCard(m, ph)}
                   </div>`).join('')}
               </div>
             </div>`;
@@ -1347,9 +1356,9 @@ function viewAdminBracket() {
             return `
               <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <div class="px-5 py-3 flex items-center justify-between" style="background:${phDone?'#1A2500':'#f9fafb'}">
-                  <span class="font-bold text-sm uppercase" style="color:${phDone?'#B8FF00':'#6b7280'}">${BRACKET_NAMES[ph]||ph}</span>
+                  <span class="font-bold text-sm uppercase" style="color:${phDone?'#B8FF00':PHASE_COLORS[ph]||'#6b7280'}">${BRACKET_NAMES[ph]||ph}</span>
                   <div class="flex items-center gap-2">
-                    ${phDone?`<span class="text-xs font-bold" style="color:#78C832">✓ Ronda completa</span>`:''}
+                    ${phDone?`<span class="text-xs font-bold" style="color:#ef4444">✓ Ronda completa</span>`:''}
                     ${!isLastPhase?`<button onclick="toggleBracketPhaseLock('${t.id}','${ph}')" class="text-xs px-1 py-0.5 rounded opacity-70 hover:opacity-100 transition-opacity" style="color:${phDone?'#B8FF00':'#6b7280'}" title="${isLocked?'Desbloquear para editar':'Bloquear ronda'}">${isLocked?'🔒':'🔓'}</button>`:''}
                   </div>
                 </div>
@@ -1360,7 +1369,7 @@ function viewAdminBracket() {
                     return `
                     <div>
                       <div class="text-xs font-semibold text-gray-600 mb-2 uppercase">Cruce ${mi+1}${isBye?' · BYE':''}</div>
-                      ${bracketMatchCard(m)}
+                      ${bracketMatchCard(m, ph)}
                       ${!isBye ? `
                         <div class="mt-2 flex gap-1.5 items-center">
                           <select onchange="saveBracketMatchTime('${m.id}','day',this.value)"
