@@ -717,6 +717,43 @@ function viewAdmin() {
         </div>
       </div>
 
+      <!-- Edit tournament form -->
+      <div id="form-edit-t" class="hidden bg-white rounded-2xl border border-blue-200 p-5 mb-5 shadow-sm">
+        <h3 class="font-bold text-gray-700 mb-4">✏️ Editar torneo</h3>
+        <input id="et-id" type="hidden">
+        <div class="grid sm:grid-cols-2 gap-4 mb-4">
+          <div class="sm:col-span-2">
+            <label class="label">Nombre del torneo</label>
+            <input id="et-name" type="text" class="field">
+          </div>
+          <div>
+            <label class="label">Fecha de inicio</label>
+            <input id="et-date" type="text" class="field">
+          </div>
+          <div>
+            <label class="label">Parejas por zona</label>
+            <select id="et-ppz" class="field">
+              <option value="3">3 parejas</option>
+              <option value="4">4 parejas</option>
+            </select>
+          </div>
+          <div>
+            <label class="label">Cupo máximo de parejas</label>
+            <input id="et-max" type="number" min="2" max="200" placeholder="Sin límite" class="field">
+            <p id="et-promote-hint" class="text-xs text-green-700 mt-1 hidden"></p>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="label">Días y horarios por zona</label>
+            <div id="et-slots" class="space-y-2 mb-2"></div>
+            <button type="button" onclick="addEditZoneSlot()" class="text-sm font-semibold" style="color:#5a9900">+ Agregar zona</button>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="saveEditTournament()" class="btn-primary px-5 py-2 rounded-lg text-sm font-bold">Guardar cambios</button>
+          <button onclick="document.getElementById('form-edit-t').classList.add('hidden')" class="btn-sec px-5 py-2 rounded-lg text-sm font-medium">Cancelar</button>
+        </div>
+      </div>
+
       <!-- Tournament cards -->
       ${db.tournaments.length === 0 ? `
         <div class="text-center py-14 text-gray-600">
@@ -750,6 +787,7 @@ function viewAdmin() {
                   <button onclick="go('admin-zones','${t.id}')" class="chip-btn">🗂 Zonas</button>
                   <button onclick="go('admin-scores','${t.id}')" class="chip-btn">📊 Resultados</button>
                   <button onclick="go('admin-bracket','${t.id}')" class="chip-btn">🏆 Bracket</button>
+                  <button onclick="openEditTournament('${t.id}')" class="chip-btn">✏️ Editar</button>
                   <button onclick="cycleStatus('${t.id}')" class="chip-btn chip-alt">
                     ${t.status==='inscripciones'?'🔒 Cerrar inscripciones':t.status==='en_curso'?'⏹ Finalizar torneo':'✓ Finalizado'}
                   </button>
@@ -800,6 +838,111 @@ function removeZoneSlot(btn) {
   document.querySelectorAll('#nt-slots .slot-label').forEach((el,i)=>{
     el.textContent = 'Zona ' + String.fromCharCode(65+i);
   });
+}
+
+function addEditZoneSlot(day, time) {
+  const sc = document.getElementById('et-slots'); if (!sc) return;
+  const idx = sc.querySelectorAll('.slot-row').length;
+  const letter = String.fromCharCode(65 + idx);
+  const div = document.createElement('div');
+  div.className = 'slot-row flex items-center gap-2';
+  div.innerHTML = `
+    <span class="slot-label text-xs font-bold text-gray-500 w-14 flex-shrink-0">Zona ${letter}</span>
+    <input type="date" value="${day||''}" class="slot-day border border-gray-200 rounded-lg px-2 py-1.5 text-sm flex-1 outline-none">
+    <input type="time" value="${time||'20:00'}" class="slot-time border border-gray-200 rounded-lg px-2 py-1 text-sm w-28 outline-none">
+    <button type="button" onclick="removeEditZoneSlot(this)" class="text-gray-500 hover:text-red-500 text-lg leading-none flex-shrink-0">✕</button>
+  `;
+  sc.appendChild(div);
+}
+
+function removeEditZoneSlot(btn) {
+  btn.closest('.slot-row').remove();
+  document.querySelectorAll('#et-slots .slot-label').forEach((el,i)=>{
+    el.textContent = 'Zona ' + String.fromCharCode(65+i);
+  });
+}
+
+function openEditTournament(tId) {
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  // Close new-tournament form if open
+  document.getElementById('form-new-t').classList.add('hidden');
+  document.getElementById('et-id').value   = tId;
+  document.getElementById('et-name').value = t.name;
+  document.getElementById('et-date').value = t.startDate || '';
+  document.getElementById('et-ppz').value  = t.ppz || 3;
+  document.getElementById('et-max').value  = t.maxPairs || '';
+  // Populate slots
+  const sc = document.getElementById('et-slots');
+  sc.innerHTML = '';
+  (t.playSlots || []).forEach(s => addEditZoneSlot(s.day, s.time));
+  if (!t.playSlots || t.playSlots.length === 0) addEditZoneSlot();
+  // Update promote hint
+  updatePromoteHint(tId);
+  document.getElementById('et-max').oninput = () => updatePromoteHint(tId);
+  // Scroll into view
+  const form = document.getElementById('form-edit-t');
+  form.classList.remove('hidden');
+  form.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function updatePromoteHint(tId) {
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  const newMax = parseInt(document.getElementById('et-max').value) || 0;
+  const hint   = document.getElementById('et-promote-hint');
+  if (newMax <= 0) { hint.classList.add('hidden'); return; }
+  const confirmed = (db.pairs||[]).filter(p=>p.tId===tId && !p.suplente).length;
+  const suplentes = (db.pairs||[]).filter(p=>p.tId===tId && p.suplente)
+    .sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+  const toPromote = Math.max(0, Math.min(suplentes.length, newMax - confirmed));
+  if (toPromote > 0) {
+    hint.textContent = `✅ Se promoverán ${toPromote} suplente${toPromote!==1?'s':''} a confirmadas.`;
+    hint.classList.remove('hidden');
+  } else if (newMax < confirmed) {
+    hint.textContent = `⚠️ El nuevo cupo (${newMax}) es menor a las confirmadas actuales (${confirmed}).`;
+    hint.style.color = '#b45309';
+    hint.classList.remove('hidden');
+  } else {
+    hint.classList.add('hidden');
+  }
+}
+
+function saveEditTournament() {
+  const tId = document.getElementById('et-id').value;
+  const t   = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  const newName   = document.getElementById('et-name').value.trim();
+  const newDate   = document.getElementById('et-date').value.trim();
+  const newPpz    = parseInt(document.getElementById('et-ppz').value);
+  const newMax    = parseInt(document.getElementById('et-max').value) || 0;
+  const newSlots  = [...document.querySelectorAll('#et-slots .slot-row')].map(row=>({
+    day:  row.querySelector('.slot-day').value || '',
+    time: row.querySelector('.slot-time').value || '20:00',
+  }));
+  if (!newName) { alert('Ingresá un nombre'); return; }
+
+  // Auto-promote suplentes if cupo increased
+  if (newMax > 0) {
+    const confirmed = (db.pairs||[]).filter(p=>p.tId===tId && !p.suplente).length;
+    const slots     = Math.max(0, newMax - confirmed);
+    if (slots > 0) {
+      const toPromote = (db.pairs||[])
+        .filter(p=>p.tId===tId && p.suplente)
+        .sort((a,b)=>new Date(a.ts)-new Date(b.ts))
+        .slice(0, slots);
+      toPromote.forEach(p => { p.suplente = false; });
+      if (toPromote.length > 0)
+        alert(`✅ ${toPromote.length} pareja${toPromote.length!==1?'s':''} promovida${toPromote.length!==1?'s':''} de suplente a confirmada.`);
+    }
+  }
+
+  t.name      = newName;
+  t.startDate = newDate;
+  t.ppz       = newPpz;
+  t.maxPairs  = newMax;
+  t.playSlots = newSlots;
+
+  saveDB();
+  document.getElementById('form-edit-t').classList.add('hidden');
+  render();
 }
 
 function cycleStatus(id) {
