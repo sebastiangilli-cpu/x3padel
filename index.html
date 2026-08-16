@@ -183,7 +183,7 @@ function render() {
   app.classList.add('fade-in');
 
   switch(currentView) {
-    case 'home':         app.innerHTML = viewHome();           break;
+    case 'home':         app.innerHTML = viewHome(); setTimeout(updateRegState, 0); break;
     case 'results':      app.innerHTML = viewResults();        break;
     case 'admin':        app.innerHTML = adminOk ? viewAdmin() : viewLogin(); break;
     case 'admin-pairs':  app.innerHTML = viewAdminPairs();     break;
@@ -236,33 +236,28 @@ function viewHome() {
   if (open.length === 0) return banners;
 
   const t0 = open[0];
-  const tId = t0.id;
-  const myPairs = db.pairs.filter(p => p.tId === tId);
-  const regularPairs = myPairs.filter(p => !p.suplente);
-  const isFull = t0.maxPairs > 0 && regularPairs.length >= t0.maxPairs;
 
   return `
     ${banners}
     <div class="max-w-lg mx-auto">
       <!-- Form -->
-      <div class="bg-white rounded-2xl shadow-sm overflow-hidden" style="border:1.5px solid ${isFull ? '#f97316' : '#e5e7eb'}">
-        ${isFull ? `
-        <div class="px-6 py-3 text-center text-sm font-bold" style="background:#1a0a00;color:#f97316">
+      <div id="reg-card" class="bg-white rounded-2xl shadow-sm overflow-hidden" style="border:1.5px solid #e5e7eb">
+        <div id="reg-full-banner" class="hidden px-6 py-3 text-center text-sm font-bold" style="background:#1a0a00;color:#f97316">
           🔴 CUPO COMPLETO · Podés inscribirte como SUPLENTE
-        </div>` : ''}
+        </div>
         <div class="p-6">
-          <h3 class="text-lg font-bold text-gray-800 mb-4">${isFull ? '📋 Inscribirse como suplente' : '📝 Inscribir pareja'}</h3>
+          <h3 id="reg-title" class="text-lg font-bold text-gray-800 mb-4">📝 Inscribir pareja</h3>
           ${open.length > 1 ? `
             <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Torneo</label>
-            <select id="reg-tid" class="field mb-4">
+            <select id="reg-tid" class="field mb-4" onchange="updateRegState()">
               ${open.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
             </select>` :
-            `<input type="hidden" id="reg-tid" value="${tId}">`
+            `<input type="hidden" id="reg-tid" value="${t0.id}">`
           }
-          <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Jugadora 1 *</label>
+          <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Jugador/a 1 *</label>
           <input id="reg-p1" type="text" placeholder="Apellido y Nombre" class="field mb-3"
             oninput="this.value=this.value.toUpperCase()">
-          <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Jugadora 2 *</label>
+          <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Jugador/a 2 *</label>
           <input id="reg-p2" type="text" placeholder="Apellido y Nombre" class="field mb-3"
             oninput="this.value=this.value.toUpperCase()">
           <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Teléfono *</label>
@@ -291,14 +286,39 @@ function viewHome() {
             `;
           })()}
           <div id="reg-msg" class="hidden mb-3 p-3 rounded-xl text-sm"></div>
-          <button onclick="doRegister()" class="btn-primary w-full py-3 rounded-xl font-bold text-sm"
-            style="${isFull ? 'background:#f97316;color:#fff' : ''}">
-            ${isFull ? '📋 Inscribirme como suplente' : '✅ Confirmar inscripción'}
+          <div id="reg-suplente-warn" class="hidden mb-3 p-3 rounded-xl text-sm font-semibold" style="background:#fff7ed;border:1.5px solid #f97316;color:#9a3412">
+            ⚠️ El torneo está completo. Al confirmar, quedarás en <strong>lista de espera</strong> como suplente. Te avisamos si se libera un lugar.
+          </div>
+          <button id="reg-btn" onclick="doRegister()" class="w-full py-3 rounded-xl font-bold text-sm" style="background:#B8FF00;color:#1A2500;border:none">
+            ✅ Confirmar inscripción
           </button>
         </div>
       </div>
-
     </div>`;
+}
+
+function updateRegState() {
+  const sel  = document.getElementById('reg-tid'); if (!sel) return;
+  const tId  = sel.value || sel.getAttribute('value');
+  const t    = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  const confirmed = (db.pairs||[]).filter(p=>p.tId===tId && !p.suplente).length;
+  const full = t.maxPairs > 0 && confirmed >= t.maxPairs;
+
+  const card   = document.getElementById('reg-card');
+  const banner = document.getElementById('reg-full-banner');
+  const title  = document.getElementById('reg-title');
+  const warn   = document.getElementById('reg-suplente-warn');
+  const btn    = document.getElementById('reg-btn');
+
+  if (card)   card.style.borderColor   = full ? '#f97316' : '#e5e7eb';
+  if (banner) banner.classList.toggle('hidden', !full);
+  if (title)  title.textContent        = full ? '📋 Inscribirse como suplente' : '📝 Inscribir pareja';
+  if (warn)   warn.classList.toggle('hidden', !full);
+  if (btn) {
+    btn.style.background = full ? '#ea580c' : '#B8FF00';
+    btn.style.color      = full ? '#fff'     : '#1A2500';
+    btn.textContent      = full ? '📋 Anotarme como suplente' : '✅ Confirmar inscripción';
+  }
 }
 
 function doRegister() {
