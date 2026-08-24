@@ -718,17 +718,10 @@ function viewAdmin() {
             <input id="nt-max" type="number" min="2" max="200" placeholder="Ej: 12  (dejar vacío = sin límite)" class="field">
           </div>
           <div class="sm:col-span-2">
-            <label class="label">Días y horarios por zona <span class="normal-case font-normal text-gray-600">(opcional)</span></label>
-            <div id="nt-slots" class="space-y-2 mb-2">
-              <div class="slot-row flex items-center gap-2">
-                <span class="slot-label text-xs font-bold text-gray-500 w-14 flex-shrink-0">Zona A</span>
-                <input type="date" class="slot-day border border-gray-200 rounded-lg px-2 py-1.5 text-sm flex-1 outline-none">
-                <input type="time" value="20:00" class="slot-time border border-gray-200 rounded-lg px-2 py-1 text-sm w-28 outline-none">
-                <button type="button" onclick="removeZoneSlot(this)" class="text-gray-500 hover:text-red-500 text-lg leading-none flex-shrink-0">✕</button>
-              </div>
-            </div>
-            <button type="button" onclick="addZoneSlot()" class="text-sm font-semibold" style="color:#5a9900">+ Agregar zona</button>
-            <p class="text-xs text-gray-600 mt-1">El sistema respetará estas disponibilidades al armar zonas. Las inscriptas también pueden indicar en qué día no pueden jugar.</p>
+            <label class="label">Días de juego <span class="normal-case font-normal text-gray-600">(cada zona dura 3hs — 3 partidos de 1hs c/u)</span></label>
+            <div id="nt-slots" class="space-y-2 mb-2"></div>
+            <button type="button" onclick="addDaySlot('nt-slots')" class="text-sm font-semibold" style="color:#5a9900">+ Agregar día</button>
+            <p class="text-xs text-gray-600 mt-1">El sistema asigna las zonas al azar respetando los días que los participantes no pueden jugar.</p>
           </div>
         </div>
         <div class="flex gap-2">
@@ -763,9 +756,9 @@ function viewAdmin() {
             <p id="et-promote-hint" class="text-xs text-green-700 mt-1 hidden"></p>
           </div>
           <div class="sm:col-span-2">
-            <label class="label">Días y horarios por zona</label>
+            <label class="label">Días de juego</label>
             <div id="et-slots" class="space-y-2 mb-2"></div>
-            <button type="button" onclick="addEditZoneSlot()" class="text-sm font-semibold" style="color:#5a9900">+ Agregar zona</button>
+            <button type="button" onclick="addDaySlot('et-slots')" class="text-sm font-semibold" style="color:#5a9900">+ Agregar día</button>
           </div>
         </div>
         <div class="flex gap-2">
@@ -825,61 +818,56 @@ function createTournament() {
   const date = document.getElementById('nt-date').value.trim();
   const ppz  = parseInt(document.getElementById('nt-ppz').value);
   const maxPairs = parseInt(document.getElementById('nt-max').value) || 0;
-  const playSlots = [...document.querySelectorAll('#nt-slots .slot-row')].map(row=>({
-    day:  row.querySelector('.slot-day').value || '',
-    time: row.querySelector('.slot-time').value || '20:00',
-  }));
+  const playSlots = readDaySlots('nt-slots');
   if (!name) { alert('Ingresá un nombre'); return; }
   db.tournaments.push({ id:uid(), name, startDate:date, ppz, maxPairs, playSlots, status:'inscripciones', ts:new Date().toISOString() });
-  // Reset slot form to one blank row
   const sc = document.getElementById('nt-slots');
   sc.innerHTML = '';
-  addZoneSlot();
+  addDaySlot('nt-slots');
   saveDB(); render();
 }
 
-function addZoneSlot(day, time) {
-  const sc = document.getElementById('nt-slots'); if (!sc) return;
-  const idx = sc.querySelectorAll('.slot-row').length;
-  const letter = String.fromCharCode(65 + idx);
+// Add a day-slot row: date | # zones | start time | remove
+function addDaySlot(containerId, day, count, time) {
+  const sc = document.getElementById(containerId); if (!sc) return;
   const div = document.createElement('div');
-  div.className = 'slot-row flex items-center gap-2';
+  div.className = 'slot-row flex items-center gap-2 flex-wrap';
   div.innerHTML = `
-    <span class="slot-label text-xs font-bold text-gray-500 w-14 flex-shrink-0">Zona ${letter}</span>
-    <input type="date" value="${day||''}" class="slot-day border border-gray-200 rounded-lg px-2 py-1.5 text-sm flex-1 outline-none">
-    <input type="time" value="${time||'20:00'}" class="slot-time border border-gray-200 rounded-lg px-2 py-1 text-sm w-28 outline-none">
-    <button type="button" onclick="removeZoneSlot(this)" class="text-gray-500 hover:text-red-500 text-lg leading-none flex-shrink-0">✕</button>
+    <input type="date" value="${day||''}" class="slot-day border border-gray-200 rounded-lg px-2 py-1.5 text-sm flex-1 outline-none" style="min-width:130px">
+    <div class="flex items-center gap-1 flex-shrink-0">
+      <span class="text-xs font-bold text-gray-500">Zonas:</span>
+      <input type="number" value="${count||1}" min="1" max="20" class="slot-count border border-gray-200 rounded-lg px-2 py-1.5 text-sm w-16 outline-none">
+    </div>
+    <div class="flex items-center gap-1 flex-shrink-0">
+      <span class="text-xs font-bold text-gray-500">Desde:</span>
+      <input type="time" value="${time||'20:00'}" class="slot-time border border-gray-200 rounded-lg px-2 py-1 text-sm w-28 outline-none">
+    </div>
+    <button type="button" onclick="this.closest('.slot-row').remove()" class="text-gray-500 hover:text-red-500 text-lg leading-none flex-shrink-0">✕</button>
   `;
   sc.appendChild(div);
 }
 
-function removeZoneSlot(btn) {
-  btn.closest('.slot-row').remove();
-  document.querySelectorAll('#nt-slots .slot-label').forEach((el,i)=>{
-    el.textContent = 'Zona ' + String.fromCharCode(65+i);
+// Convert day-slot rows in a container → expanded playSlots array (1 per zone)
+function readDaySlots(containerId) {
+  const slots = [];
+  document.querySelectorAll(`#${containerId} .slot-row`).forEach(row => {
+    const day   = row.querySelector('.slot-day').value   || '';
+    const count = parseInt(row.querySelector('.slot-count').value) || 1;
+    const time  = row.querySelector('.slot-time').value  || '20:00';
+    for (let i = 0; i < count; i++) slots.push({ day, time });
   });
+  return slots;
 }
 
-function addEditZoneSlot(day, time) {
-  const sc = document.getElementById('et-slots'); if (!sc) return;
-  const idx = sc.querySelectorAll('.slot-row').length;
-  const letter = String.fromCharCode(65 + idx);
-  const div = document.createElement('div');
-  div.className = 'slot-row flex items-center gap-2';
-  div.innerHTML = `
-    <span class="slot-label text-xs font-bold text-gray-500 w-14 flex-shrink-0">Zona ${letter}</span>
-    <input type="date" value="${day||''}" class="slot-day border border-gray-200 rounded-lg px-2 py-1.5 text-sm flex-1 outline-none">
-    <input type="time" value="${time||'20:00'}" class="slot-time border border-gray-200 rounded-lg px-2 py-1 text-sm w-28 outline-none">
-    <button type="button" onclick="removeEditZoneSlot(this)" class="text-gray-500 hover:text-red-500 text-lg leading-none flex-shrink-0">✕</button>
-  `;
-  sc.appendChild(div);
-}
-
-function removeEditZoneSlot(btn) {
-  btn.closest('.slot-row').remove();
-  document.querySelectorAll('#et-slots .slot-label').forEach((el,i)=>{
-    el.textContent = 'Zona ' + String.fromCharCode(65+i);
+// Convert existing playSlots array → grouped daySched for display
+function playSlotsToDaySched(playSlots) {
+  const map = {};
+  (playSlots || []).forEach(s => {
+    const key = (s.day||'') + '|' + (s.time||'20:00');
+    if (!map[key]) map[key] = { day: s.day||'', time: s.time||'20:00', count: 0 };
+    map[key].count++;
   });
+  return Object.values(map);
 }
 
 function openEditTournament(tId) {
@@ -891,11 +879,12 @@ function openEditTournament(tId) {
   document.getElementById('et-date').value = t.startDate || '';
   document.getElementById('et-ppz').value  = t.ppz || 3;
   document.getElementById('et-max').value  = t.maxPairs || '';
-  // Populate slots
+  // Populate slots (grouped by day)
   const sc = document.getElementById('et-slots');
   sc.innerHTML = '';
-  (t.playSlots || []).forEach(s => addEditZoneSlot(s.day, s.time));
-  if (!t.playSlots || t.playSlots.length === 0) addEditZoneSlot();
+  const sched = playSlotsToDaySched(t.playSlots);
+  if (sched.length > 0) sched.forEach(s => addDaySlot('et-slots', s.day, s.count, s.time));
+  else addDaySlot('et-slots');
   // Update promote hint
   updatePromoteHint(tId);
   document.getElementById('et-max').oninput = () => updatePromoteHint(tId);
@@ -933,10 +922,7 @@ function saveEditTournament() {
   const newDate   = document.getElementById('et-date').value.trim();
   const newPpz    = parseInt(document.getElementById('et-ppz').value);
   const newMax    = parseInt(document.getElementById('et-max').value) || 0;
-  const newSlots  = [...document.querySelectorAll('#et-slots .slot-row')].map(row=>({
-    day:  row.querySelector('.slot-day').value || '',
-    time: row.querySelector('.slot-time').value || '20:00',
-  }));
+  const newSlots = readDaySlots('et-slots');
   if (!newName) { alert('Ingresá un nombre'); return; }
 
   // Auto-promote suplentes if cupo increased
@@ -1952,6 +1938,11 @@ function getZoneSchedule(t, letter) {
 function toggleForm(id) {
   const el = document.getElementById(id);
   el.classList.toggle('hidden');
+  // Init new-tournament day slots if empty
+  if (id === 'form-new-t' && !el.classList.contains('hidden')) {
+    const sc = document.getElementById('nt-slots');
+    if (sc && sc.querySelectorAll('.slot-row').length === 0) addDaySlot('nt-slots');
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
