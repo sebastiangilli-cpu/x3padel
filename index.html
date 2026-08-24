@@ -1181,6 +1181,18 @@ function autoZones() {
     dbp.pos  = (i % t.ppz) + 1;
   });
 
+  // Randomly assign day slots to zone letters (shuffle slots first)
+  const nZones = Math.ceil(pairs.length / t.ppz);
+  if (t.playSlots && t.playSlots.length > 0) {
+    const slots = [...t.playSlots].sort(() => Math.random() - 0.5);
+    const zoneMap = {};
+    for (let z = 0; z < nZones; z++) {
+      const letter = String.fromCharCode(65 + z);
+      zoneMap[letter] = slots[z] || slots[slots.length - 1];
+    }
+    t.zoneAssignments = zoneMap;
+  }
+
   genZoneMatches(t, sh);
   saveDB(); render();
 }
@@ -1902,10 +1914,13 @@ function addHours(timeStr, hours) {
 }
 
 function getMatchTime(t, letter, matchIndex) {
-  const zi = letter.charCodeAt(0) - 65;
   let baseTime = null;
-  if (t.playSlots && t.playSlots[zi]) baseTime = t.playSlots[zi].time || '20:00';
-  else if (t.playTime) baseTime = t.playTime;
+  if (t.zoneAssignments && t.zoneAssignments[letter]) baseTime = t.zoneAssignments[letter].time || '20:00';
+  else {
+    const zi = letter.charCodeAt(0) - 65;
+    if (t.playSlots && t.playSlots[zi]) baseTime = t.playSlots[zi].time || '20:00';
+    else if (t.playTime) baseTime = t.playTime;
+  }
   if (!baseTime) return null;
   return addHours(baseTime, matchIndex);
 }
@@ -1921,14 +1936,19 @@ function formatDay(d) {
 }
 
 function getZoneSchedule(t, letter) {
+  // Randomized assignment (set by autoZones)
+  if (t.zoneAssignments && t.zoneAssignments[letter]) {
+    const slot = t.zoneAssignments[letter];
+    if (!slot.day) return null;
+    return `${formatDay(slot.day)} ${slot.time || '20:00'}`;
+  }
+  // Backward compat: sequential playSlots
   const zi = letter.charCodeAt(0) - 65;
-  // New format: playSlots per zone
   if (t.playSlots && t.playSlots.length > 0) {
     const slot = t.playSlots[zi];
     if (!slot || !slot.day) return null;
     return `${formatDay(slot.day)} ${slot.time || '20:00'}`;
   }
-  // Backward compat: old playDays + playTime
   if (t.playDays && t.playDays.length > 0) {
     return `${t.playDays[zi % t.playDays.length]} ${t.playTime || '20:00'}`;
   }
