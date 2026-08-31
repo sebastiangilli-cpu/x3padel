@@ -1280,8 +1280,43 @@ function mkMatch(tId, phase, zone, matchNum, p1Id, p2Id, pair1Label) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  PDF EXPORT
+//  PDF EXPORT  (ventana de impresión → Guardar como PDF)
 // ═══════════════════════════════════════════════════════════════════
+const PDF_BASE_STYLE = `
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,Helvetica,sans-serif;padding:14px;color:#111;background:#fff}
+  @media print{@page{margin:8mm}.no-print{display:none!important}}
+  .no-print{text-align:center;margin-bottom:14px}
+  .print-btn{padding:10px 28px;background:#1A2500;color:#B8FF00;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}
+  .hdr{text-align:center;margin-bottom:14px;padding-bottom:10px;border-bottom:3px solid #B8FF00}
+  .hdr h1{font-size:20px;font-weight:900}
+  .hdr p{font-size:12px;color:#555;margin-top:3px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid1{display:grid;grid-template-columns:1fr;gap:10px}
+  .zone-card{border:2px solid #1A2500;border-radius:10px;overflow:hidden;page-break-inside:avoid;break-inside:avoid}
+  .zone-hdr{background:#1A2500;color:#B8FF00;padding:7px 12px;font-weight:700;font-size:13px;display:flex;justify-content:space-between;align-items:center}
+  .zone-sched{font-size:11px}
+  .pair-row{padding:6px 12px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:8px}
+  .pair-tag{background:#edfad0;color:#3d6600;border-radius:4px;padding:1px 5px;font-size:11px;font-weight:700;flex-shrink:0}
+  .pair-name{font-size:12px;color:#222}
+  .match-sec{padding:8px 12px;background:#f9fafb;border-top:1px solid #e5e7eb}
+  .match-sec-title{font-size:10px;font-weight:700;color:#666;text-transform:uppercase;margin-bottom:4px}
+  .match-row{font-size:11px;color:#444;padding:1.5px 0;display:flex;gap:8px}
+  .match-time{font-weight:700;color:#555;flex-shrink:0;min-width:36px}
+  .ph-section{margin-bottom:16px;page-break-inside:avoid;break-inside:avoid}
+  .ph-label{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;color:#fff;margin-bottom:8px}
+  .ph-done{font-size:11px;font-weight:700;color:#ef4444;margin-left:6px}
+  .bm-card{border-radius:8px;overflow:hidden;background:#fff;page-break-inside:avoid;break-inside:avoid}
+  .bm-sched{padding:4px 10px;font-size:10px;font-weight:700;color:#3d6600;background:#f0fde4;text-align:center}
+  .bm-row{display:flex;align-items:center;gap:8px;padding:8px 10px}
+  .bm-seed{font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;flex-shrink:0}
+  .bm-name{flex:1;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bm-score{font-size:12px;font-weight:700;flex-shrink:0}
+  .bm-win{font-size:11px;font-weight:700;color:#78C832;flex-shrink:0}
+  .bm-div{height:1px;background:#e5e7eb}
+  .champion-box{background:#1A2500;border-radius:10px;padding:14px;text-align:center;margin-bottom:14px}
+`;
+
 function pdfZones(tId) {
   const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
   const zones = getZones(tId);
@@ -1300,50 +1335,28 @@ function pdfZones(tId) {
           matchLabels.push(`${L}${zone.pairs[i].pos} vs ${L}${zone.pairs[j].pos}`);
     }
     const schedSection = zSched ? `
-      <div style="padding:8px 12px;background:#f9fafb;border-top:1px solid #e5e7eb">
-        <div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;margin-bottom:4px">Horario de partidos</div>
-        ${matchLabels.map((lbl, mi) => {
+      <div class="match-sec">
+        <div class="match-sec-title">Horario de partidos</div>
+        ${matchLabels.map((lbl,mi) => {
           const mt = getMatchTime(t, zone.letter, mi);
-          return `<div style="font-size:11px;color:#444;padding:1.5px 0;display:flex;gap:8px">
-            ${mt?`<span style="font-weight:700;color:#555;flex-shrink:0;min-width:36px">${mt}hs</span>`:''}
-            <span>${lbl}</span>
-          </div>`;
+          return `<div class="match-row">${mt?`<span class="match-time">${mt}hs</span>`:''}<span>${lbl}</span></div>`;
         }).join('')}
       </div>` : '';
     return `
-      <div style="border:2px solid #1A2500;border-radius:10px;overflow:hidden;break-inside:avoid;margin-bottom:4px">
-        <div style="background:#1A2500;color:#B8FF00;padding:7px 12px;font-weight:700;font-size:13px;display:flex;justify-content:space-between;align-items:center">
-          <span>ZONA ${zone.letter}</span>
-          ${zSched?`<span style="font-size:11px">${zSched}</span>`:''}
-        </div>
-        ${zone.pairs.map(p=>`
-          <div style="padding:6px 12px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:8px">
-            <span style="background:#edfad0;color:#3d6600;border-radius:4px;padding:1px 5px;font-size:11px;font-weight:700;flex-shrink:0">${zone.letter}${p.pos}</span>
-            <span style="font-size:12px;color:#222">${p.p1} / ${p.p2}</span>
-          </div>`).join('')}
+      <div class="zone-card">
+        <div class="zone-hdr"><span>ZONA ${zone.letter}</span>${zSched?`<span class="zone-sched">${zSched}</span>`:''}</div>
+        ${zone.pairs.map(p=>`<div class="pair-row"><span class="pair-tag">${zone.letter}${p.pos}</span><span class="pair-name">${p.p1} / ${p.p2}</span></div>`).join('')}
         ${schedSection}
       </div>`;
   }).join('');
 
-  const el = document.createElement('div');
-  el.innerHTML = `
-    <div style="font-family:Arial,Helvetica,sans-serif;padding:10px 6px">
-      <div style="text-align:center;margin-bottom:14px;border-bottom:2px solid #B8FF00;padding-bottom:10px">
-        <div style="font-size:20px;font-weight:900;color:#111">X3 Padel — ${t.name}</div>
-        <div style="font-size:12px;color:#555;margin-top:3px">Distribución de Zonas</div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${zonesHtml}</div>
-    </div>`;
-  el.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px';
-  document.body.appendChild(el);
-
-  html2pdf().set({
-    margin: [8, 6],
-    filename: `Zonas_${t.name.replace(/\s+/g,'_')}.pdf`,
-    html2canvas: { scale: 2, useCORS: true, logging: false },
-    jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
-  }).from(el).save().then(() => document.body.removeChild(el))
-    .catch(e => { document.body.removeChild(el); console.error(e); });
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Zonas – ${t.name}</title><style>${PDF_BASE_STYLE}</style></head><body>
+    <div class="no-print"><button class="print-btn" onclick="window.print()">🖨️ Guardar como PDF</button></div>
+    <div class="hdr"><h1>X3 Padel — ${t.name}</h1><p>Distribución de Zonas</p></div>
+    <div class="grid2">${zonesHtml}</div>
+  </body></html>`);
+  win.document.close();
 }
 
 function pdfBracket(tId) {
@@ -1357,22 +1370,24 @@ function pdfBracket(tId) {
     const sets = m.sets.filter(([a,b])=>a!==null&&b!==null&&!(a===0&&b===0));
     const sc = sets.map(([a,b])=>`${a}-${b}`).join('  ');
     const p1Win = m.winner==='p1', p2Win = m.winner==='p2';
+    const ph = m.phase;
+    const phColor = PHASE_COLORS[ph]||'#6b7280';
     const schedLabel = m.matchDay ? `${m.matchDay}${m.matchTime?' · '+m.matchTime+'hs':''}` : null;
     return `
-      <div style="border:2px solid ${PHASE_COLORS[m.phase]||'#6b7280'};border-radius:8px;overflow:hidden;background:#fff;break-inside:avoid">
-        ${schedLabel?`<div style="padding:4px 10px;font-size:10px;font-weight:700;color:#3d6600;background:#f0fde4;text-align:center">📅 ${schedLabel}</div>`:''}
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:${p1Win?'#1A2500':'#fff'}">
-          ${m.p1Seed?`<span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;flex-shrink:0;background:${p1Win?'#2d4000':'#edfad0'};color:${p1Win?'#B8FF00':'#3d6600'}">${m.p1Seed}</span>`:''}
-          <span style="flex:1;font-size:12px;font-weight:600;color:${p1Win?'#B8FF00':'#333'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.p1Label||'Por definir'}</span>
-          <span style="font-size:12px;font-weight:700;color:${p1Win?'#B8FF00':'#666'};flex-shrink:0">${sc||''}</span>
-          ${p1Win?`<span style="font-size:11px;font-weight:700;color:#78C832;flex-shrink:0">✓</span>`:'<span style="width:14px"></span>'}
+      <div class="bm-card" style="border:2px solid ${phColor}">
+        ${schedLabel?`<div class="bm-sched">📅 ${schedLabel}</div>`:''}
+        <div class="bm-row" style="background:${p1Win?'#1A2500':'#fff'}">
+          ${m.p1Seed?`<span class="bm-seed" style="background:${p1Win?'#2d4000':'#edfad0'};color:${p1Win?'#B8FF00':'#3d6600'}">${m.p1Seed}</span>`:''}
+          <span class="bm-name" style="color:${p1Win?'#B8FF00':'#333'}">${m.p1Label||'Por definir'}</span>
+          <span class="bm-score" style="color:${p1Win?'#B8FF00':'#666'}">${sc||''}</span>
+          ${p1Win?`<span class="bm-win">✓</span>`:'<span style="width:14px"></span>'}
         </div>
-        <div style="height:1px;background:#e5e7eb"></div>
-        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:${p2Win?'#1A2500':'#fff'}">
-          ${m.p2Seed?`<span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;flex-shrink:0;background:${p2Win?'#2d4000':'#edfad0'};color:${p2Win?'#B8FF00':'#3d6600'}">${m.p2Seed}</span>`:''}
-          <span style="flex:1;font-size:12px;font-weight:600;color:${p2Win?'#B8FF00':'#333'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.p2Label||'Por definir'}</span>
-          <span style="font-size:12px;font-weight:700;color:${p2Win?'#B8FF00':'#666'};flex-shrink:0">${p2Win&&sc?sc:''}</span>
-          ${p2Win?`<span style="font-size:11px;font-weight:700;color:#78C832;flex-shrink:0">✓</span>`:'<span style="width:14px"></span>'}
+        <div class="bm-div"></div>
+        <div class="bm-row" style="background:${p2Win?'#1A2500':'#fff'}">
+          ${m.p2Seed?`<span class="bm-seed" style="background:${p2Win?'#2d4000':'#edfad0'};color:${p2Win?'#B8FF00':'#3d6600'}">${m.p2Seed}</span>`:''}
+          <span class="bm-name" style="color:${p2Win?'#B8FF00':'#333'}">${m.p2Label||'Por definir'}</span>
+          <span class="bm-score" style="color:${p2Win?'#B8FF00':'#666'}">${p2Win&&sc?sc:''}</span>
+          ${p2Win?`<span class="bm-win">✓</span>`:'<span style="width:14px"></span>'}
         </div>
       </div>`;
   };
@@ -1380,48 +1395,26 @@ function pdfBracket(tId) {
   const phasesHtml = phases.map(ph => {
     const phMatches = bm.filter(m=>m.phase===ph).sort((a,b)=>a.matchNum-b.matchNum);
     const phDone = phMatches.every(m=>m.winner);
+    const cols = phMatches.length === 1 ? 'grid1' : 'grid2';
     return `
-      <div style="margin-bottom:18px;break-inside:avoid">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          <span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;color:#fff;background:${PHASE_COLORS[ph]||'#6b7280'}">${BRACKET_NAMES[ph]||ph}</span>
-          ${phDone?`<span style="font-size:11px;font-weight:700;color:#ef4444">✓ Ronda completa</span>`:''}
-        </div>
-        <div style="display:grid;grid-template-columns:${phMatches.length===1?'1fr':'1fr 1fr'};gap:8px">
-          ${phMatches.map(m=>matchBlock(m)).join('')}
-        </div>
+      <div class="ph-section">
+        <div><span class="ph-label" style="background:${PHASE_COLORS[ph]||'#6b7280'}">${BRACKET_NAMES[ph]||ph}</span>${phDone?`<span class="ph-done">✓ Ronda completa</span>`:''}</div>
+        <div class="${cols}">${phMatches.map(m=>matchBlock(m)).join('')}</div>
       </div>`;
   }).join('');
 
-  // Champion
   const finalMs = bm.filter(m=>m.phase==='final');
   const champion = finalMs.length>0&&finalMs[0].winner
     ? (finalMs[0].winner==='p1'?finalMs[0].p1Label:finalMs[0].p2Label) : null;
 
-  const el = document.createElement('div');
-  el.innerHTML = `
-    <div style="font-family:Arial,Helvetica,sans-serif;padding:10px 6px">
-      <div style="text-align:center;margin-bottom:14px;border-bottom:2px solid #B8FF00;padding-bottom:10px">
-        <div style="font-size:20px;font-weight:900;color:#111">X3 Padel — ${t.name}</div>
-        <div style="font-size:12px;color:#555;margin-top:3px">Bracket Final</div>
-      </div>
-      ${champion?`
-      <div style="background:#1A2500;border-radius:10px;padding:14px;text-align:center;margin-bottom:14px">
-        <div style="font-size:22px;margin-bottom:4px">🏆</div>
-        <div style="font-size:10px;font-weight:700;color:#78C832;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">¡Campeón!</div>
-        <div style="font-size:16px;font-weight:900;color:#B8FF00">${champion}</div>
-      </div>`:''}
-      ${phasesHtml}
-    </div>`;
-  el.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px';
-  document.body.appendChild(el);
-
-  html2pdf().set({
-    margin: [8, 6],
-    filename: `Bracket_${t.name.replace(/\s+/g,'_')}.pdf`,
-    html2canvas: { scale: 2, useCORS: true, logging: false },
-    jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
-  }).from(el).save().then(() => document.body.removeChild(el))
-    .catch(e => { document.body.removeChild(el); console.error(e); });
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Bracket – ${t.name}</title><style>${PDF_BASE_STYLE}</style></head><body>
+    <div class="no-print"><button class="print-btn" onclick="window.print()">🖨️ Guardar como PDF</button></div>
+    <div class="hdr"><h1>X3 Padel — ${t.name}</h1><p>Bracket Final</p></div>
+    ${champion?`<div class="champion-box"><div style="font-size:22px;margin-bottom:4px">🏆</div><div style="font-size:10px;font-weight:700;color:#78C832;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">¡Campeón!</div><div style="font-size:16px;font-weight:900;color:#B8FF00">${champion}</div></div>`:''}
+    ${phasesHtml}
+  </body></html>`);
+  win.document.close();
 }
 
 function publishZones(tId) {
