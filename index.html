@@ -1292,17 +1292,21 @@ body{font-family:Arial,Helvetica,sans-serif;padding:14px;background:#fff;color:#
 .zones-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .zone-card{border:1.5px solid #999;break-inside:avoid;page-break-inside:avoid}
 .zone-title{background:#1A2500;color:#B8FF00;text-align:center;font-size:17px;font-weight:900;padding:8px;letter-spacing:1px;text-transform:uppercase}
-.section-hdr{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:3px 8px;background:#f0f0f0;color:#555;border-top:1px solid #ddd;border-bottom:1px solid #ddd}
+.section-hdr{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:4px 8px;background:#78C832;color:#fff;border-top:none;border-bottom:none}
 .pairs-tbl{width:100%;border-collapse:collapse}
-.pairs-tbl td{padding:4px 8px;font-size:10.5px;border-bottom:1px solid #eee;vertical-align:middle}
-.pairs-tbl td.pos{font-weight:700;color:#1A2500;width:28px;white-space:nowrap}
-.pairs-tbl td.names{font-weight:600}
+.pairs-tbl tr{background:#fff}
+.pairs-tbl tr:nth-child(even){background:#edfad0}
+.pairs-tbl td{padding:4px 8px;font-size:10.5px;border-bottom:1px solid #d4f0a0;vertical-align:middle}
 .pairs-tbl tr:last-child td{border-bottom:none}
-.match-tbl{width:100%;border-collapse:collapse;border-top:1.5px solid #999}
-.match-tbl th{font-size:8.5px;font-weight:700;text-transform:uppercase;padding:4px 6px;text-align:left;background:#edfad0;color:#2d5000;border-bottom:1px solid #c5e080}
-.match-tbl td{font-size:9.5px;padding:4px 6px;border-bottom:1px solid #eee;color:#222}
+.pairs-tbl td.pos{font-weight:900;color:#fff;background:#2d5000;width:32px;white-space:nowrap;text-align:center;padding:4px 6px}
+.pairs-tbl tr:nth-child(even) td.pos{background:#1A2500}
+.pairs-tbl td.names{font-weight:700;color:#1A2500}
+.match-tbl{width:100%;border-collapse:collapse;border-top:2px solid #1A2500}
+.match-tbl th{font-size:8.5px;font-weight:700;text-transform:uppercase;padding:4px 6px;text-align:left;background:#2d5000;color:#B8FF00;border-bottom:1px solid #1A2500}
+.match-tbl td{font-size:9.5px;padding:4px 6px;border-bottom:1px solid #e0f0cc;color:#222}
 .match-tbl tr:last-child td{border-bottom:none}
-.match-tbl tr:nth-child(even) td{background:#f7fdf0}
+.match-tbl tr:nth-child(odd) td{background:#f0fde4}
+.match-tbl tr:nth-child(even) td{background:#fff}
 .lugar{font-weight:700;color:#1A2500;text-align:center!important}
 .footer-note{margin-top:12px;border:1px solid #ccc;padding:7px 12px;font-size:8.5px;color:#444;text-align:center;background:#fafafa;line-height:1.5}
 `;
