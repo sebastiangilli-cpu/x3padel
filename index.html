@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif; }
     input[type=number]::-webkit-inner-spin-button { opacity: 1; }
@@ -1350,13 +1350,10 @@ function pdfZones(tId) {
       </div>`;
   }).join('');
 
-  const win = window.open('','_blank');
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Zonas – ${t.name}</title><style>${PDF_BASE_STYLE}</style></head><body>
-    <div class="no-print"><button class="print-btn" onclick="window.print()">🖨️ Guardar como PDF</button></div>
+  _printFrame(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Zonas – ${t.name}</title><style>${PDF_BASE_STYLE}</style></head><body>
     <div class="hdr"><h1>X3 Padel — ${t.name}</h1><p>Distribución de Zonas</p></div>
     <div class="grid2">${zonesHtml}</div>
   </body></html>`);
-  win.document.close();
 }
 
 function pdfBracket(tId) {
@@ -1407,14 +1404,27 @@ function pdfBracket(tId) {
   const champion = finalMs.length>0&&finalMs[0].winner
     ? (finalMs[0].winner==='p1'?finalMs[0].p1Label:finalMs[0].p2Label) : null;
 
-  const win = window.open('','_blank');
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Bracket – ${t.name}</title><style>${PDF_BASE_STYLE}</style></head><body>
-    <div class="no-print"><button class="print-btn" onclick="window.print()">🖨️ Guardar como PDF</button></div>
+  _printFrame(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Bracket – ${t.name}</title><style>${PDF_BASE_STYLE}</style></head><body>
     <div class="hdr"><h1>X3 Padel — ${t.name}</h1><p>Bracket Final</p></div>
     ${champion?`<div class="champion-box"><div style="font-size:22px;margin-bottom:4px">🏆</div><div style="font-size:10px;font-weight:700;color:#78C832;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">¡Campeón!</div><div style="font-size:16px;font-weight:900;color:#B8FF00">${champion}</div></div>`:''}
     ${phasesHtml}
   </body></html>`);
-  win.document.close();
+}
+
+function _printFrame(html) {
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'position:fixed;right:-9999px;bottom:-9999px;width:800px;height:600px;visibility:hidden;border:0';
+  document.body.appendChild(frame);
+  frame.contentDocument.open();
+  frame.contentDocument.write(html);
+  frame.contentDocument.close();
+  setTimeout(() => {
+    try {
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+    } catch(e) { console.error(e); }
+    setTimeout(() => document.body.removeChild(frame), 2000);
+  }, 600);
 }
 
 function publishZones(tId) {
