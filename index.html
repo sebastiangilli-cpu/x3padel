@@ -7,6 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif; }
     input[type=number]::-webkit-inner-spin-button { opacity: 1; }
@@ -440,7 +441,14 @@ function viewResults() {
 
   if (zones.length === 0) return html + `<div class="text-center text-gray-600 py-8">Las zonas aún no fueron asignadas.</div>`;
 
-  html += `<div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+  html += `
+  <div class="flex items-center justify-between mb-3">
+    <h3 class="text-base font-bold text-gray-700">🗂 Zonas</h3>
+    <button onclick="pdfZones('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:scale-95 transition-all" title="Descargar PDF de zonas">
+      📄 Descargar PDF
+    </button>
+  </div>
+  <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
     ${zones.map(z => publicZoneCard(t, z)).join('')}
   </div>`;
 
@@ -588,7 +596,12 @@ function publicBracket(t, bm, champion) {
   }
   return `
     <div class="mt-6">
-      <h3 class="text-xl font-bold text-gray-800 mb-4">🏆 Bracket Final</h3>
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-xl font-bold text-gray-800">🏆 Bracket Final</h3>
+        <button onclick="pdfBracket('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:scale-95 transition-all" title="Descargar PDF del bracket">
+          📄 Descargar PDF
+        </button>
+      </div>
       <div class="space-y-6">
         ${visiblePhases.map(ph => {
           const phMatches = bm.filter(m=>m.phase===ph).sort((a,b)=>a.matchNum-b.matchNum);
@@ -1107,6 +1120,7 @@ function viewAdminZones() {
           <div class="flex gap-2 ml-auto flex-wrap">
             <button onclick="autoZones()" class="btn-primary px-4 py-2 rounded-xl text-sm font-bold">🔀 Asignar automáticamente</button>
             ${assigned.length>0?`<button onclick="clearZones()" class="btn-sec px-4 py-2 rounded-xl text-sm font-medium">↺ Limpiar</button>`:''}
+            ${assigned.length>0?`<button onclick="pdfZones('${t.id}')" class="px-4 py-2 rounded-xl text-sm font-bold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">📄 PDF</button>`:''}
             ${assigned.length>0 && t.status!=='finalizado' ? `<button onclick="publishZones('${t.id}')" class="px-4 py-2 rounded-xl text-sm font-bold" style="background:#B8FF00;color:#1A2500">${t.status==='en_curso'?'✅ Publicado — Republicar':'🚀 Confirmar y publicar'}</button>` : ''}
           </div>
         </div>
@@ -1263,6 +1277,151 @@ function mkMatch(tId, phase, zone, matchNum, p1Id, p2Id, pair1Label) {
     sets: [[null,null],[null,null],[null,null]],
     winner: null,
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PDF EXPORT
+// ═══════════════════════════════════════════════════════════════════
+function pdfZones(tId) {
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  const zones = getZones(tId);
+  if (zones.length === 0) { alert('No hay zonas asignadas aún.'); return; }
+
+  const zonesHtml = zones.map(zone => {
+    const zSched = getZoneSchedule(t, zone.letter);
+    const L = zone.letter;
+    let matchLabels;
+    if (t.ppz === 3) {
+      matchLabels = [`${L}1 vs ${L}2`, `Gan.(${L}1/${L}2) vs ${L}3`, `Perd.(${L}1/${L}2) vs ${L}3`];
+    } else {
+      matchLabels = [];
+      for (let i=0;i<zone.pairs.length;i++)
+        for (let j=i+1;j<zone.pairs.length;j++)
+          matchLabels.push(`${L}${zone.pairs[i].pos} vs ${L}${zone.pairs[j].pos}`);
+    }
+    const schedSection = zSched ? `
+      <div style="padding:8px 12px;background:#f9fafb;border-top:1px solid #e5e7eb">
+        <div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;margin-bottom:4px">Horario de partidos</div>
+        ${matchLabels.map((lbl, mi) => {
+          const mt = getMatchTime(t, zone.letter, mi);
+          return `<div style="font-size:11px;color:#444;padding:1.5px 0;display:flex;gap:8px">
+            ${mt?`<span style="font-weight:700;color:#555;flex-shrink:0;min-width:36px">${mt}hs</span>`:''}
+            <span>${lbl}</span>
+          </div>`;
+        }).join('')}
+      </div>` : '';
+    return `
+      <div style="border:2px solid #1A2500;border-radius:10px;overflow:hidden;break-inside:avoid;margin-bottom:4px">
+        <div style="background:#1A2500;color:#B8FF00;padding:7px 12px;font-weight:700;font-size:13px;display:flex;justify-content:space-between;align-items:center">
+          <span>ZONA ${zone.letter}</span>
+          ${zSched?`<span style="font-size:11px">${zSched}</span>`:''}
+        </div>
+        ${zone.pairs.map(p=>`
+          <div style="padding:6px 12px;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;gap:8px">
+            <span style="background:#edfad0;color:#3d6600;border-radius:4px;padding:1px 5px;font-size:11px;font-weight:700;flex-shrink:0">${zone.letter}${p.pos}</span>
+            <span style="font-size:12px;color:#222">${p.p1} / ${p.p2}</span>
+          </div>`).join('')}
+        ${schedSection}
+      </div>`;
+  }).join('');
+
+  const el = document.createElement('div');
+  el.innerHTML = `
+    <div style="font-family:Arial,Helvetica,sans-serif;padding:10px 6px">
+      <div style="text-align:center;margin-bottom:14px;border-bottom:2px solid #B8FF00;padding-bottom:10px">
+        <div style="font-size:20px;font-weight:900;color:#111">X3 Padel — ${t.name}</div>
+        <div style="font-size:12px;color:#555;margin-top:3px">Distribución de Zonas</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${zonesHtml}</div>
+    </div>`;
+  el.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px';
+  document.body.appendChild(el);
+
+  html2pdf().set({
+    margin: [8, 6],
+    filename: `Zonas_${t.name.replace(/\s+/g,'_')}.pdf`,
+    html2canvas: { scale: 2, useCORS: true, logging: false },
+    jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
+  }).from(el).save().then(() => document.body.removeChild(el))
+    .catch(e => { document.body.removeChild(el); console.error(e); });
+}
+
+function pdfBracket(tId) {
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  const ORDER = ['16avos','8avos','cuartos','semis','final'];
+  const bm = db.matches.filter(m=>m.tId===tId && m.phase!=='zonas');
+  const phases = ORDER.filter(ph=>bm.some(m=>m.phase===ph));
+  if (phases.length === 0) { alert('No hay rondas del bracket cargadas aún.'); return; }
+
+  const matchBlock = m => {
+    const sets = m.sets.filter(([a,b])=>a!==null&&b!==null&&!(a===0&&b===0));
+    const sc = sets.map(([a,b])=>`${a}-${b}`).join('  ');
+    const p1Win = m.winner==='p1', p2Win = m.winner==='p2';
+    const schedLabel = m.matchDay ? `${m.matchDay}${m.matchTime?' · '+m.matchTime+'hs':''}` : null;
+    return `
+      <div style="border:2px solid ${PHASE_COLORS[m.phase]||'#6b7280'};border-radius:8px;overflow:hidden;background:#fff;break-inside:avoid">
+        ${schedLabel?`<div style="padding:4px 10px;font-size:10px;font-weight:700;color:#3d6600;background:#f0fde4;text-align:center">📅 ${schedLabel}</div>`:''}
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:${p1Win?'#1A2500':'#fff'}">
+          ${m.p1Seed?`<span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;flex-shrink:0;background:${p1Win?'#2d4000':'#edfad0'};color:${p1Win?'#B8FF00':'#3d6600'}">${m.p1Seed}</span>`:''}
+          <span style="flex:1;font-size:12px;font-weight:600;color:${p1Win?'#B8FF00':'#333'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.p1Label||'Por definir'}</span>
+          <span style="font-size:12px;font-weight:700;color:${p1Win?'#B8FF00':'#666'};flex-shrink:0">${sc||''}</span>
+          ${p1Win?`<span style="font-size:11px;font-weight:700;color:#78C832;flex-shrink:0">✓</span>`:'<span style="width:14px"></span>'}
+        </div>
+        <div style="height:1px;background:#e5e7eb"></div>
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:${p2Win?'#1A2500':'#fff'}">
+          ${m.p2Seed?`<span style="font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;flex-shrink:0;background:${p2Win?'#2d4000':'#edfad0'};color:${p2Win?'#B8FF00':'#3d6600'}">${m.p2Seed}</span>`:''}
+          <span style="flex:1;font-size:12px;font-weight:600;color:${p2Win?'#B8FF00':'#333'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.p2Label||'Por definir'}</span>
+          <span style="font-size:12px;font-weight:700;color:${p2Win?'#B8FF00':'#666'};flex-shrink:0">${p2Win&&sc?sc:''}</span>
+          ${p2Win?`<span style="font-size:11px;font-weight:700;color:#78C832;flex-shrink:0">✓</span>`:'<span style="width:14px"></span>'}
+        </div>
+      </div>`;
+  };
+
+  const phasesHtml = phases.map(ph => {
+    const phMatches = bm.filter(m=>m.phase===ph).sort((a,b)=>a.matchNum-b.matchNum);
+    const phDone = phMatches.every(m=>m.winner);
+    return `
+      <div style="margin-bottom:18px;break-inside:avoid">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;color:#fff;background:${PHASE_COLORS[ph]||'#6b7280'}">${BRACKET_NAMES[ph]||ph}</span>
+          ${phDone?`<span style="font-size:11px;font-weight:700;color:#ef4444">✓ Ronda completa</span>`:''}
+        </div>
+        <div style="display:grid;grid-template-columns:${phMatches.length===1?'1fr':'1fr 1fr'};gap:8px">
+          ${phMatches.map(m=>matchBlock(m)).join('')}
+        </div>
+      </div>`;
+  }).join('');
+
+  // Champion
+  const finalMs = bm.filter(m=>m.phase==='final');
+  const champion = finalMs.length>0&&finalMs[0].winner
+    ? (finalMs[0].winner==='p1'?finalMs[0].p1Label:finalMs[0].p2Label) : null;
+
+  const el = document.createElement('div');
+  el.innerHTML = `
+    <div style="font-family:Arial,Helvetica,sans-serif;padding:10px 6px">
+      <div style="text-align:center;margin-bottom:14px;border-bottom:2px solid #B8FF00;padding-bottom:10px">
+        <div style="font-size:20px;font-weight:900;color:#111">X3 Padel — ${t.name}</div>
+        <div style="font-size:12px;color:#555;margin-top:3px">Bracket Final</div>
+      </div>
+      ${champion?`
+      <div style="background:#1A2500;border-radius:10px;padding:14px;text-align:center;margin-bottom:14px">
+        <div style="font-size:22px;margin-bottom:4px">🏆</div>
+        <div style="font-size:10px;font-weight:700;color:#78C832;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px">¡Campeón!</div>
+        <div style="font-size:16px;font-weight:900;color:#B8FF00">${champion}</div>
+      </div>`:''}
+      ${phasesHtml}
+    </div>`;
+  el.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px';
+  document.body.appendChild(el);
+
+  html2pdf().set({
+    margin: [8, 6],
+    filename: `Bracket_${t.name.replace(/\s+/g,'_')}.pdf`,
+    html2canvas: { scale: 2, useCORS: true, logging: false },
+    jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
+  }).from(el).save().then(() => document.body.removeChild(el))
+    .catch(e => { document.body.removeChild(el); console.error(e); });
 }
 
 function publishZones(tId) {
@@ -1507,6 +1666,10 @@ function viewAdminBracket() {
 
       <!-- Bracket rounds -->
       ${bm.length > 0 ? `
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm font-bold text-gray-700">Rondas del bracket</span>
+          <button onclick="pdfBracket('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50">📄 PDF Bracket</button>
+        </div>
         <div class="space-y-5">
           ${bmPhases.map((ph, phIdx) => {
             const phMatches = bm.filter(m=>m.phase===ph).sort((a,b)=>a.matchNum-b.matchNum);
