@@ -1283,37 +1283,62 @@ function mkMatch(tId, phase, zone, matchNum, p1Id, p2Id, pair1Label) {
 //  PDF EXPORT  (iframe → diálogo de impresión → Guardar como PDF)
 // ═══════════════════════════════════════════════════════════════════
 const PDF_ZONE_STYLE = `
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,Helvetica,sans-serif;padding:14px;background:#fff;color:#111}
+*{box-sizing:border-box;margin:0;padding:0;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+body{font-family:Arial,Helvetica,sans-serif;padding:14px;background:#fff;color:#111;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 @media print{@page{margin:8mm;size:A4 portrait}body{padding:0}}
+
+/* === Outer wrapper (matches reference border) === */
 .page-outer{border:1.5px solid #bbb;padding:10px 10px 8px}
-.page-title{text-align:center;font-size:22px;font-weight:900;text-transform:uppercase;padding:10px 16px;border:2px solid #aaa;color:#111;margin-bottom:0;letter-spacing:.5px}
-.page-subtitle{text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:5px 10px;background:#e4e4e4;color:#333;margin-bottom:12px;border:1px solid #ccc;border-top:none}
+
+/* === Header === */
+.page-title{text-align:center;font-size:22px;font-weight:900;text-transform:uppercase;
+  padding:10px 16px;border:2px solid #aaa;color:#111;margin-bottom:0;letter-spacing:.5px}
+.page-subtitle{text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:1px;padding:6px 10px;background:#e0e0e0;color:#444;margin-bottom:12px;
+  border:1px solid #ccc;border-top:none}
+
+/* === Grid === */
 .zones-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.zone-card{border:1.5px solid #999;break-inside:avoid;page-break-inside:avoid}
-.zone-title{background:#1A2500;color:#B8FF00;text-align:center;font-size:17px;font-weight:900;padding:8px;letter-spacing:1px;text-transform:uppercase}
-.section-hdr{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:4px 8px;background:#78C832;color:#fff;border-top:none;border-bottom:none}
+.zone-card{border:1.5px solid #999;break-inside:avoid;page-break-inside:avoid;overflow:hidden}
+
+/* === ZONA X title — dark green bg, lime text === */
+.zone-title{background:#1A2500 !important;color:#B8FF00 !important;
+  text-align:center;font-size:17px;font-weight:900;padding:9px 8px;
+  letter-spacing:1px;text-transform:uppercase;display:block}
+
+/* === PAREJAS subheader — medium green bg, white text === */
+.section-hdr{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;
+  padding:4px 8px;background:#4a8c1c !important;color:#fff !important;display:block}
+
+/* === Pair rows — plain white, bold text === */
 .pairs-tbl{width:100%;border-collapse:collapse}
-.pairs-tbl tr{background:#fff}
-.pairs-tbl tr:nth-child(even){background:#edfad0}
-.pairs-tbl td{padding:4px 8px;font-size:10.5px;border-bottom:1px solid #d4f0a0;vertical-align:middle}
+.pairs-tbl td{padding:4px 8px;font-size:10.5px;border-bottom:1px solid #e0e0e0;vertical-align:middle}
 .pairs-tbl tr:last-child td{border-bottom:none}
-.pairs-tbl td.pos{font-weight:900;color:#fff;background:#2d5000;width:32px;white-space:nowrap;text-align:center;padding:4px 6px}
-.pairs-tbl tr:nth-child(even) td.pos{background:#1A2500}
-.pairs-tbl td.names{font-weight:700;color:#1A2500}
+.pairs-tbl td.pos{font-weight:900;color:#1A2500;width:30px;white-space:nowrap}
+.pairs-tbl td.names{font-weight:700;color:#111}
+
+/* === Match table — header matches zone title color === */
 .match-tbl{width:100%;border-collapse:collapse;border-top:2px solid #1A2500}
-.match-tbl th{font-size:8.5px;font-weight:700;text-transform:uppercase;padding:4px 6px;text-align:left;background:#2d5000;color:#B8FF00;border-bottom:1px solid #1A2500}
-.match-tbl td{font-size:9.5px;padding:4px 6px;border-bottom:1px solid #e0f0cc;color:#222}
+.match-tbl th{font-size:8.5px;font-weight:700;text-transform:uppercase;padding:5px 6px;
+  text-align:left;background:#1A2500 !important;color:#B8FF00 !important;
+  border-right:1px solid #2d4000;border-bottom:none}
+.match-tbl th:last-child{border-right:none}
+.match-tbl td{font-size:9.5px;padding:4.5px 6px;border-bottom:1px solid #e8e8e8;color:#222;
+  border-right:1px solid #efefef}
+.match-tbl td:last-child{border-right:none}
 .match-tbl tr:last-child td{border-bottom:none}
-.match-tbl tr:nth-child(odd) td{background:#f0fde4}
+.match-tbl tr:nth-child(odd) td{background:#f5fdf0 !important}
 .match-tbl tr:nth-child(even) td{background:#fff}
-.lugar{font-weight:700;color:#1A2500;text-align:center!important}
-.footer-note{margin-top:12px;border:1px solid #ccc;padding:7px 12px;font-size:8.5px;color:#444;text-align:center;background:#fafafa;line-height:1.5}
+.lugar{font-weight:700;color:#1A2500;text-align:center !important}
+
+/* === Footer === */
+.footer-note{margin-top:12px;border:1px solid #ccc;padding:7px 12px;font-size:8.5px;
+  color:#444;text-align:center;background:#f8f8f8 !important;line-height:1.5}
 `;
 
 const PDF_BRACKET_STYLE = `
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,Helvetica,sans-serif;padding:8px 10px;background:#fff;color:#111}
+*{box-sizing:border-box;margin:0;padding:0;print-color-adjust:exact;-webkit-print-color-adjust:exact}
+body{font-family:Arial,Helvetica,sans-serif;padding:8px 10px;background:#fff;color:#111;print-color-adjust:exact;-webkit-print-color-adjust:exact}
 @media print{@page{margin:5mm;size:A4 landscape}body{padding:0}}
 .page-title{text-align:center;font-size:16px;font-weight:900;text-transform:uppercase;padding:6px 14px;border:2px solid #aaa;color:#111;letter-spacing:.5px;margin-bottom:0}
 .page-subtitle{text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:4px 10px;background:#e4e4e4;color:#333;margin-bottom:6px;border:1px solid #ccc;border-top:none}
