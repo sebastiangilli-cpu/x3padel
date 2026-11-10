@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Torneo de 5ta Caballeros – Vista previa</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: 'Arial', sans-serif; background: #f4f7f0; }
+  .zone-header { background: #1A2500; color: #B8FF00; }
+  .zone-subhdr { background: #4a8c1c; color: white; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.8px; padding:3px 10px; }
+  .match-row { font-size:12px; border-bottom:1px solid #eee; }
+  .match-row:last-child { border-bottom:none; }
+  .badge { background:#edfad0; color:#3d6600; border-radius:4px; padding:1px 5px; font-size:11px; font-weight:700; }
+  .badge-dark { background:#1A2500; color:#B8FF00; }
+  .zone-4-label { background:#fff7e6; border:1px solid #f59e0b; border-radius:4px; padding:1px 6px; font-size:10px; font-weight:700; color:#b45309; }
+  .info-bar { background:#B8FF00; color:#1A2500; border-radius:12px; padding:8px 16px; font-weight:700; display:inline-block; font-size:13px; }
+</style>
+</head>
+<body class="p-4 md:p-8">
+
+<div class="max-w-5xl mx-auto">
+
+  <!-- Header -->
+  <div style="background:#1A2500;border-radius:16px;" class="p-6 mb-6">
+    <h1 class="text-2xl font-black text-center uppercase tracking-wide" style="color:#B8FF00">Torneo de 5ta Caballeros</h1>
+    <p class="text-center text-sm mt-1" style="color:#78C832">FIXTURE DE ZONAS · FASE CLASIFICATORIA</p>
+  </div>
+
+  <!-- Summary -->
+  <div class="bg-white rounded-2xl border border-gray-100 p-4 mb-6 shadow-sm flex flex-wrap gap-4 items-center">
+    <span class="info-bar">👥 20 parejas inscriptas</span>
+    <span class="info-bar">🗂 6 zonas</span>
+    <span class="info-bar">⚡ 2 zonas de 4 + 4 zonas de 3</span>
+    <div class="ml-auto text-xs text-gray-500">
+      <span class="zone-4-label">ZONA 4 PAR.</span> Zonas A y B — formato FAP reglamentario
+    </div>
+  </div>
+
+  <!-- Zones grid -->
+  <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
+
+    <!-- ZONE A — 4 pairs -->
+    <div class="bg-white rounded-2xl overflow-hidden shadow-sm border-2" style="border-color:#f59e0b">
+      <div class="zone-header px-4 py-2.5 flex items-center justify-between">
+        <span class="font-bold text-lg">ZONA A</span>
+        <span class="zone-4-label">4 parejas</span>
+      </div>
+      <div class="zone-subhdr">Parejas</div>
+      <div class="divide-y divide-gray-50">
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">A1</span><span class="text-sm font-semibold text-gray-800">Bravo / Leiva</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">A2</span><span class="text-sm font-semibold text-gray-800">García / López</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">A3</span><span class="text-sm font-semibold text-gray-800">Silva / Núñez</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">A4</span><span class="text-sm font-semibold text-gray-800">Álvarez / Ruiz</span></div>
+      </div>
+      <div class="zone-subhdr">Partidos</div>
+      <div class="px-4 py-2 space-y-1.5">
+        <div class="match-row py-1.5 flex items-center gap-2">
+          <span class="text-xs font-bold text-amber-600 w-4">1</span>
+          <span class="text-xs text-gray-700"><span class="badge">A1</span> Bravo/Leiva <span class="text-gray-400 mx-1">vs</span> <span class="badge">A4</span> Álvarez/Ruiz</span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2">
+          <span class="text-xs font-bold text-amber-600 w-4">2</span>
+          <span class="text-xs text-gray-700"><span class="badge">A2</span> García/López <span class="text-gray-400 mx-1">vs</span> <span class="badge">A3</span> Silva/Núñez</span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2 bg-gray-50 rounded px-1">
+          <span class="text-xs font-bold text-green-600 w-4">3</span>
+          <span class="text-xs text-gray-600">🏆 Gan.(A1/A4) vs Gan.(A2/A3) <span class="text-gray-400">→ 1° y 2°</span></span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2 bg-gray-50 rounded px-1">
+          <span class="text-xs font-bold text-orange-500 w-4">4</span>
+          <span class="text-xs text-gray-600">Perd.(A1/A4) vs Perd.(A2/A3) <span class="text-gray-400">→ 3° clasifica, 4° eliminado</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ZONE B — 4 pairs -->
+    <div class="bg-white rounded-2xl overflow-hidden shadow-sm border-2" style="border-color:#f59e0b">
+      <div class="zone-header px-4 py-2.5 flex items-center justify-between">
+        <span class="font-bold text-lg">ZONA B</span>
+        <span class="zone-4-label">4 parejas</span>
+      </div>
+      <div class="zone-subhdr">Parejas</div>
+      <div class="divide-y divide-gray-50">
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">B1</span><span class="text-sm font-semibold text-gray-800">Muñoz / Jiménez</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">B2</span><span class="text-sm font-semibold text-gray-800">Díaz / Morales</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">B3</span><span class="text-sm font-semibold text-gray-800">Acosta / Benítez</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">B4</span><span class="text-sm font-semibold text-gray-800">Vargas / Ramos</span></div>
+      </div>
+      <div class="zone-subhdr">Partidos</div>
+      <div class="px-4 py-2 space-y-1.5">
+        <div class="match-row py-1.5 flex items-center gap-2">
+          <span class="text-xs font-bold text-amber-600 w-4">1</span>
+          <span class="text-xs text-gray-700"><span class="badge">B1</span> Muñoz/Jiménez <span class="text-gray-400 mx-1">vs</span> <span class="badge">B4</span> Vargas/Ramos</span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2">
+          <span class="text-xs font-bold text-amber-600 w-4">2</span>
+          <span class="text-xs text-gray-700"><span class="badge">B2</span> Díaz/Morales <span class="text-gray-400 mx-1">vs</span> <span class="badge">B3</span> Acosta/Benítez</span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2 bg-gray-50 rounded px-1">
+          <span class="text-xs font-bold text-green-600 w-4">3</span>
+          <span class="text-xs text-gray-600">🏆 Gan.(B1/B4) vs Gan.(B2/B3) <span class="text-gray-400">→ 1° y 2°</span></span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2 bg-gray-50 rounded px-1">
+          <span class="text-xs font-bold text-orange-500 w-4">4</span>
+          <span class="text-xs text-gray-600">Perd.(B1/B4) vs Perd.(B2/B3) <span class="text-gray-400">→ 3° clasifica, 4° eliminado</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ZONE C — 3 pairs -->
+    <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
+      <div class="zone-header px-4 py-2.5 flex items-center justify-between">
+        <span class="font-bold text-lg">ZONA C</span>
+        <span class="text-xs opacity-70 font-semibold">3 parejas</span>
+      </div>
+      <div class="zone-subhdr">Parejas</div>
+      <div class="divide-y divide-gray-50">
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">C1</span><span class="text-sm font-semibold text-gray-800">Rodríguez / Martínez</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">C2</span><span class="text-sm font-semibold text-gray-800">Medina / Castro</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">C3</span><span class="text-sm font-semibold text-gray-800">Ramírez / Flores</span></div>
+      </div>
+      <div class="zone-subhdr">Partidos</div>
+      <div class="px-4 py-2 space-y-1.5">
+        <div class="match-row py-1.5 flex items-center gap-2">
+          <span class="text-xs font-bold text-amber-600 w-4">1</span>
+          <span class="text-xs text-gray-700"><span class="badge">C1</span> Rodríguez/Martínez <span class="text-gray-400 mx-1">vs</span> <span class="badge">C2</span> Medina/Castro</span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2 bg-gray-50 rounded px-1">
+          <span class="text-xs font-bold text-green-600 w-4">2</span>
+          <span class="text-xs text-gray-600">🏆 Gan.(C1/C2) vs <span class="badge">C3</span> Ramírez/Flores</span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2 bg-gray-50 rounded px-1">
+          <span class="text-xs font-bold text-orange-500 w-4">3</span>
+          <span class="text-xs text-gray-600">Perd.(C1/C2) vs <span class="badge">C3</span> Ramírez/Flores</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ZONE D — 3 pairs -->
+    <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
+      <div class="zone-header px-4 py-2.5 flex items-center justify-between">
+        <span class="font-bold text-lg">ZONA D</span>
+        <span class="text-xs opacity-70 font-semibold">3 parejas</span>
+      </div>
+      <div class="zone-subhdr">Parejas</div>
+      <div class="divide-y divide-gray-50">
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">D1</span><span class="text-sm font-semibold text-gray-800">Vega / Reyes</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">D2</span><span class="text-sm font-semibold text-gray-800">Fernández / Torres</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">D3</span><span class="text-sm font-semibold text-gray-800">González / Pérez</span></div>
+      </div>
+      <div class="zone-subhdr">Partidos</div>
+      <div class="px-4 py-2 space-y-1.5">
+        <div class="match-row py-1.5 flex items-center gap-2">
+          <span class="text-xs font-bold text-amber-600 w-4">1</span>
+          <span class="text-xs text-gray-700"><span class="badge">D1</span> Vega/Reyes <span class="text-gray-400 mx-1">vs</span> <span class="badge">D2</span> Fernández/Torres</span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2 bg-gray-50 rounded px-1">
+          <span class="text-xs font-bold text-green-600 w-4">2</span>
+          <span class="text-xs text-gray-600">🏆 Gan.(D1/D2) vs <span class="badge">D3</span> González/Pérez</span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2 bg-gray-50 rounded px-1">
+          <span class="text-xs font-bold text-orange-500 w-4">3</span>
+          <span class="text-xs text-gray-600">Perd.(D1/D2) vs <span class="badge">D3</span> González/Pérez</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ZONE E — 3 pairs -->
+    <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
+      <div class="zone-header px-4 py-2.5 flex items-center justify-between">
+        <span class="font-bold text-lg">ZONA E</span>
+        <span class="text-xs opacity-70 font-semibold">3 parejas</span>
+      </div>
+      <div class="zone-subhdr">Parejas</div>
+      <div class="divide-y divide-gray-50">
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">E1</span><span class="text-sm font-semibold text-gray-800">Chávez / Molina</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">E2</span><span class="text-sm font-semibold text-gray-800">Ibáñez / Soria</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">E3</span><span class="text-sm font-semibold text-gray-800">Suárez / Ortiz</span></div>
+      </div>
+      <div class="zone-subhdr">Partidos</div>
+      <div class="px-4 py-2 space-y-1.5">
+        <div class="match-row py-1.5 flex items-center gap-2">
+          <span class="text-xs font-bold text-amber-600 w-4">1</span>
+          <span class="text-xs text-gray-700"><span class="badge">E1</span> Chávez/Molina <span class="text-gray-400 mx-1">vs</span> <span class="badge">E2</span> Ibáñez/Soria</span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2 bg-gray-50 rounded px-1">
+          <span class="text-xs font-bold text-green-600 w-4">2</span>
+          <span class="text-xs text-gray-600">🏆 Gan.(E1/E2) vs <span class="badge">E3</span> Suárez/Ortiz</span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2 bg-gray-50 rounded px-1">
+          <span class="text-xs font-bold text-orange-500 w-4">3</span>
+          <span class="text-xs text-gray-600">Perd.(E1/E2) vs <span class="badge">E3</span> Suárez/Ortiz</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ZONE F — 3 pairs -->
+    <div class="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
+      <div class="zone-header px-4 py-2.5 flex items-center justify-between">
+        <span class="font-bold text-lg">ZONA F</span>
+        <span class="text-xs opacity-70 font-semibold">3 parejas</span>
+      </div>
+      <div class="zone-subhdr">Parejas</div>
+      <div class="divide-y divide-gray-50">
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">F1</span><span class="text-sm font-semibold text-gray-800">Mena / Cabrera</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">F2</span><span class="text-sm font-semibold text-gray-800">Romero / Herrera</span></div>
+        <div class="px-4 py-2 flex items-center gap-2"><span class="badge">F3</span><span class="text-sm font-semibold text-gray-800">Rojas / Guerrero</span></div>
+      </div>
+      <div class="zone-subhdr">Partidos</div>
+      <div class="px-4 py-2 space-y-1.5">
+        <div class="match-row py-1.5 flex items-center gap-2">
+          <span class="text-xs font-bold text-amber-600 w-4">1</span>
+          <span class="text-xs text-gray-700"><span class="badge">F1</span> Mena/Cabrera <span class="text-gray-400 mx-1">vs</span> <span class="badge">F2</span> Romero/Herrera</span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2 bg-gray-50 rounded px-1">
+          <span class="text-xs font-bold text-green-600 w-4">2</span>
+          <span class="text-xs text-gray-600">🏆 Gan.(F1/F2) vs <span class="badge">F3</span> Rojas/Guerrero</span>
+        </div>
+        <div class="match-row py-1.5 flex items-center gap-2 bg-gray-50 rounded px-1">
+          <span class="text-xs font-bold text-orange-500 w-4">3</span>
+          <span class="text-xs text-gray-600">Perd.(F1/F2) vs <span class="badge">F3</span> Rojas/Guerrero</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bracket preview -->
+  <div class="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm mb-6">
+    <h2 class="font-bold text-gray-800 mb-1">Bracket eliminatorio (proyección)</h2>
+    <p class="text-xs text-gray-500 mb-4">12 clasificadas de zonas → bracket de 16 (4 byes directos a cuartos de final)</p>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+      <!-- Seeds 1-6: firsts from each zone -->
+      <div>
+        <div class="text-xs font-bold text-gray-500 uppercase mb-2">1ros de zona <span class="text-green-600">(BYE directo)</span></div>
+        <div class="space-y-1.5">
+          <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style="background:#1A2500">
+            <span class="font-bold text-xs px-1 rounded" style="background:#2d4000;color:#B8FF00">A1</span>
+            <span style="color:#B8FF00" class="font-semibold">Bravo / Leiva</span>
+            <span class="ml-auto text-xs font-bold" style="color:#78C832">BYE ✓</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style="background:#1A2500">
+            <span class="font-bold text-xs px-1 rounded" style="background:#2d4000;color:#B8FF00">B1</span>
+            <span style="color:#B8FF00" class="font-semibold">Muñoz / Jiménez</span>
+            <span class="ml-auto text-xs font-bold" style="color:#78C832">BYE ✓</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style="background:#1A2500">
+            <span class="font-bold text-xs px-1 rounded" style="background:#2d4000;color:#B8FF00">C1</span>
+            <span style="color:#B8FF00" class="font-semibold">Rodríguez / Martínez</span>
+            <span class="ml-auto text-xs font-bold" style="color:#78C832">BYE ✓</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg" style="background:#1A2500">
+            <span class="font-bold text-xs px-1 rounded" style="background:#2d4000;color:#B8FF00">D1</span>
+            <span style="color:#B8FF00" class="font-semibold">Vega / Reyes</span>
+            <span class="ml-auto text-xs font-bold" style="color:#78C832">BYE ✓</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-100">
+            <span class="font-bold text-xs px-1 rounded" style="background:#e0e0e0;color:#555">E1</span>
+            <span class="text-gray-700 font-semibold">Chávez / Molina</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-100">
+            <span class="font-bold text-xs px-1 rounded" style="background:#e0e0e0;color:#555">F1</span>
+            <span class="text-gray-700 font-semibold">Mena / Cabrera</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Seeds 7-12: seconds from each zone -->
+      <div>
+        <div class="text-xs font-bold text-gray-500 uppercase mb-2">2dos de zona</div>
+        <div class="space-y-1.5">
+          <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-100">
+            <span class="font-bold text-xs px-1 rounded" style="background:#e0e0e0;color:#555">A2</span>
+            <span class="text-gray-700 font-semibold">García / López</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-100">
+            <span class="font-bold text-xs px-1 rounded" style="background:#e0e0e0;color:#555">B2</span>
+            <span class="text-gray-700 font-semibold">Díaz / Morales</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-100">
+            <span class="font-bold text-xs px-1 rounded" style="background:#e0e0e0;color:#555">C2</span>
+            <span class="text-gray-700 font-semibold">Medina / Castro</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-100">
+            <span class="font-bold text-xs px-1 rounded" style="background:#e0e0e0;color:#555">D2</span>
+            <span class="text-gray-700 font-semibold">Fernández / Torres</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-100">
+            <span class="font-bold text-xs px-1 rounded" style="background:#e0e0e0;color:#555">E2</span>
+            <span class="text-gray-700 font-semibold">Ibáñez / Soria</span>
+          </div>
+          <div class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-gray-100">
+            <span class="font-bold text-xs px-1 rounded" style="background:#e0e0e0;color:#555">F2</span>
+            <span class="text-gray-700 font-semibold">Romero / Herrera</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Round of 16 matches -->
+      <div class="col-span-2">
+        <div class="text-xs font-bold text-gray-500 uppercase mb-2">16avos de Final (previa)</div>
+        <div class="space-y-1.5">
+          <div class="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-gray-200">
+            <span class="font-bold text-xs px-1 rounded" style="background:#edfad0;color:#3d6600">E1</span>
+            <span class="text-xs text-gray-700 flex-1">Chávez / Molina</span>
+            <span class="text-gray-400 text-xs font-bold">vs</span>
+            <span class="text-xs text-gray-700 flex-1 text-right">Romero / Herrera</span>
+            <span class="font-bold text-xs px-1 rounded" style="background:#edfad0;color:#3d6600">F2</span>
+          </div>
+          <div class="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-gray-200">
+            <span class="font-bold text-xs px-1 rounded" style="background:#edfad0;color:#3d6600">F1</span>
+            <span class="text-xs text-gray-700 flex-1">Mena / Cabrera</span>
+            <span class="text-gray-400 text-xs font-bold">vs</span>
+            <span class="text-xs text-gray-700 flex-1 text-right">Ibáñez / Soria</span>
+            <span class="font-bold text-xs px-1 rounded" style="background:#edfad0;color:#3d6600">E2</span>
+          </div>
+          <div class="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-gray-200">
+            <span class="font-bold text-xs px-1 rounded" style="background:#edfad0;color:#3d6600">A2</span>
+            <span class="text-xs text-gray-700 flex-1">García / López</span>
+            <span class="text-gray-400 text-xs font-bold">vs</span>
+            <span class="text-xs text-gray-700 flex-1 text-right">Fernández / Torres</span>
+            <span class="font-bold text-xs px-1 rounded" style="background:#edfad0;color:#3d6600">D2</span>
+          </div>
+          <div class="flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-gray-200">
+            <span class="font-bold text-xs px-1 rounded" style="background:#edfad0;color:#3d6600">B2</span>
+            <span class="text-xs text-gray-700 flex-1">Díaz / Morales</span>
+            <span class="text-gray-400 text-xs font-bold">vs</span>
+            <span class="text-xs text-gray-700 flex-1 text-right">Medina / Castro</span>
+            <span class="font-bold text-xs px-1 rounded" style="background:#edfad0;color:#3d6600">C2</span>
+          </div>
+          <div class="mt-3 px-3 py-2 rounded-lg text-xs" style="background:#edfad0;color:#3d6600;font-weight:600">
+            🏅 Cuartos de final: A1, B1, C1, D1 (BYE) + 4 ganadores de la previa
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="text-center text-xs text-gray-400 pb-4">
+    X3 Pádel · Generado automáticamente · Zonas de 4 según reglamento FAP
+  </div>
+</div>
+
+</body>
+</html>
