@@ -1992,7 +1992,8 @@ function genInitialBracket() {
   });
   const nF = firsts.length;
   const seconds = [];
-  if (rawSeconds.length === nF && nF >= 2) {
+  const isPow2 = n => n >= 2 && (n & (n - 1)) === 0;
+  if (rawSeconds.length === nF && nF >= 2 && isPow2(nF)) {
     const soF    = generateBracketSeedOrder(nF);
     const zToSec = {};
     rawSeconds.forEach(s => { zToSec[s.zone] = s; });
