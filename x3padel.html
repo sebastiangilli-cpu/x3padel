@@ -1,0 +1,2990 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>X3 Padel – Torneos</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif; }
+    input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+    .fade-in { animation: fadeIn .15s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- ══ NAV ══════════════════════════════════════════════════════════════════ -->
+<nav style="background:#111111;border-bottom:2px solid #B8FF00" class="sticky top-0 z-50 shadow-lg">
+  <div class="max-w-5xl mx-auto px-4 py-2.5 flex items-center justify-between">
+    <div class="flex items-center gap-2.5 cursor-pointer" onclick="nav('home')">
+      <!-- X3 Padel Sunchales SVG logo -->
+      <div style="width:44px;height:44px;flex-shrink:0">
+        <svg viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">
+          <rect width="110" height="110" fill="#000" rx="10"/>
+          <!-- swoosh white outer -->
+          <path d="M20,32 C38,8 85,6 100,50" stroke="white" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+          <!-- swoosh green inner -->
+          <path d="M24,37 C42,14 86,13 98,56" stroke="#78C832" stroke-width="7" fill="none" stroke-linecap="round"/>
+          <!-- ball -->
+          <circle cx="96" cy="60" r="10" fill="#111" stroke="#78C832" stroke-width="2.5"/>
+          <path d="M87,55 Q96,61 87,67" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+          <path d="M105,55 Q96,61 105,67" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+          <!-- X white italic bold -->
+          <text x="4" y="77" font-family="'Arial Black',Impact,Arial,sans-serif" font-size="62" font-weight="900" fill="white" font-style="italic">X</text>
+          <!-- 3 green italic bold -->
+          <text x="46" y="77" font-family="'Arial Black',Impact,Arial,sans-serif" font-size="62" font-weight="900" fill="#78C832" font-style="italic">3</text>
+          <!-- PADEL white bold -->
+          <text x="55" y="100" font-family="'Arial Black',Impact,Arial,sans-serif" font-size="21" font-weight="900" fill="white" font-style="italic" text-anchor="middle" letter-spacing="2">PADEL</text>
+        </svg>
+      </div>
+      <div>
+        <div class="font-black leading-tight text-sm" style="color:#B8FF00;">X3 Padel</div>
+        <div class="text-xs leading-tight" style="color:#888;">Sunchales · Torneos</div>
+      </div>
+    </div>
+    <div class="flex gap-1.5">
+      <button id="nb-home"    onclick="nav('home')"    class="nav-btn">🏠 Inicio</button>
+      <button id="nb-results" onclick="nav('results')" class="nav-btn">📊 Resultados</button>
+      <button id="nb-admin"   onclick="nav('admin')"   class="nav-btn">⚙️ Admin</button>
+    </div>
+  </div>
+</nav>
+<style>
+  .nav-btn { padding:.35rem .75rem; border-radius:.5rem; font-size:.75rem; font-weight:600; color:#aaaaaa; transition:all .15s; }
+  .nav-btn:hover { background:#1e3300; color:#B8FF00; }
+  .nav-btn.active { background:#1e3300; color:#B8FF00; }
+</style>
+
+<!-- ══ APP ══════════════════════════════════════════════════════════════════ -->
+<div id="app" class="max-w-5xl mx-auto px-4 py-5 fade-in"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  DATABASE  (localStorage)
+// ═══════════════════════════════════════════════════════════════════
+const DB_KEY = 'x3padel_v2';
+
+// ── Firebase ────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyBRhvq41jhRX8BMe99jsk6vkpvN7yDH3tQ",
+  authDomain: "torneos-x3-padel-sunchales.firebaseapp.com",
+  databaseURL: "https://torneos-x3-padel-sunchales-default-rtdb.firebaseio.com",
+  projectId: "torneos-x3-padel-sunchales",
+  storageBucket: "torneos-x3-padel-sunchales.firebasestorage.app",
+  messagingSenderId: "562099829218",
+  appId: "1:562099829218:web:71595c75ac45d85e2761bb"
+};
+firebase.initializeApp(firebaseConfig);
+const fbRef = firebase.database().ref(DB_KEY);
+
+// Carga instantánea desde localStorage (caché), Firebase actualiza en segundos
+let db = (() => {
+  try { const r = localStorage.getItem(DB_KEY); if (r) return JSON.parse(r); } catch(e) {}
+  return { tournaments:[], pairs:[], matches:[] };
+})();
+
+function saveDB() {
+  try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
+  fbRef.set(db).catch(err => console.error('Firebase error:', err));
+}
+
+// Normaliza un valor que Firebase puede devolver como objeto {0:x,1:y} en lugar de array
+function normArr(v, fallback) {
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === 'object') return Object.values(v);
+  return fallback !== undefined ? fallback : [];
+}
+// Normaliza sets de partidos: [[a,b],[a,b],[a,b]]
+function normSets(sets) {
+  const arr = normArr(sets, [[null,null],[null,null],[null,null]]);
+  return arr.map(s => {
+    const sa = normArr(s, [null,null]);
+    return [sa[0]??null, sa[1]??null];
+  });
+}
+
+// Listener en tiempo real: todos los dispositivos se actualizan solos
+fbRef.on('value', snapshot => {
+  const data = snapshot.val();
+  // Firebase omits empty arrays; always normalize to arrays
+  const fresh = {
+    tournaments: normArr(data?.tournaments),
+    pairs:       normArr(data?.pairs),
+    matches:     normArr(data?.matches).map(m => ({ ...m, sets: normSets(m.sets) })),
+  };
+  if (JSON.stringify(fresh) !== JSON.stringify(db)) {
+    db = fresh;
+    try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
+    if (document.getElementById('app')) render();
+  }
+});
+
+function exportDB() {
+  const json = JSON.stringify(db, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const date = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `x3padel-backup-${date}.json`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function importDB(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.tournaments || !data.pairs || !data.matches) {
+        alert('Archivo inválido: no parece un backup de X3 Padel.'); return;
+      }
+      if (!confirm(`¿Importar backup? Esto REEMPLAZA todos los datos actuales.\n\nTorneos en el backup: ${data.tournaments.length}\nParejas: ${data.pairs.length}`)) return;
+      db = data;
+      saveDB(); render();
+      alert('✅ Datos importados correctamente.');
+    } catch(err) { alert('Error al leer el archivo: ' + err.message); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+function uid() { return Math.random().toString(36).slice(2,9) + Date.now().toString(36); }
+
+let _dbReady = true; // db initialized above from cache
+
+// ═══════════════════════════════════════════════════════════════════
+//  ROUTER
+// ═══════════════════════════════════════════════════════════════════
+let currentView = 'home';
+let activeTId = null;     // active tournament id
+let activeResultTId = null; // selected tournament in public results
+let adminOk = false;
+
+function nav(v) {
+  currentView = v;
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const nb = document.getElementById('nb-' + (v==='home'?'home':v==='results'?'results':'admin'));
+  if (nb) nb.classList.add('active');
+  render();
+}
+
+function go(v, tId) {
+  if (tId !== undefined) activeTId = tId;
+  currentView = v;
+  render();
+}
+
+function render() {
+  const app = document.getElementById('app');
+  app.classList.remove('fade-in');
+  void app.offsetWidth;
+  app.classList.add('fade-in');
+
+  switch(currentView) {
+    case 'home':         app.innerHTML = viewHome(); setTimeout(updateRegState, 0); break;
+    case 'results':      app.innerHTML = viewResults();        break;
+    case 'admin':        app.innerHTML = adminOk ? viewAdmin() : viewLogin(); break;
+    case 'admin-pairs':  app.innerHTML = viewAdminPairs();     break;
+    case 'admin-zones':  app.innerHTML = viewAdminZones();     break;
+    case 'admin-scores': app.innerHTML = viewAdminScores();    break;
+    case 'admin-bracket':app.innerHTML = viewAdminBracket();   break;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  HOME  (public registration)
+// ═══════════════════════════════════════════════════════════════════
+function viewHome() {
+  const open = db.tournaments.filter(t => t.status === 'inscripciones');
+  const active = db.tournaments.filter(t => t.status === 'en_curso' || t.status === 'finalizado');
+
+  let banners = open.map(t => {
+    const pCount = db.pairs.filter(p=>p.tId===t.id && !p.suplente).length;
+    const isFull = t.maxPairs > 0 && pCount >= t.maxPairs;
+    const pct = t.maxPairs > 0 ? Math.min(100, Math.round(pCount/t.maxPairs*100)) : null;
+    return `
+    <div class="rounded-2xl p-5 mb-4 shadow-sm relative overflow-hidden" style="background:#1A2500;border:2px solid #B8FF00">
+      <div class="absolute top-0 right-0 w-32 h-32 rounded-full opacity-20" style="background:#B8FF00;transform:translate(30%,-30%)"></div>
+      <div class="text-xs font-bold uppercase tracking-widest mb-1" style="color:#B8FF00">${isFull?'🔴 Cupo completo':'🟢 Inscripciones abiertas'}</div>
+      <h2 class="text-2xl font-black text-white">${t.name}</h2>
+      <div class="flex flex-wrap gap-4 mt-2 text-sm" style="color:#cceeaa">
+        ${t.startDate ? `<span>📅 ${t.startDate}</span>` : ''}
+        <span>📍 X3 Padel</span>
+        <span>👥 ${isFull ? '🔴 Cupo completo' : '🟢 Lugares disponibles'}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  if (!banners && active.length === 0) {
+    banners = `<div class="text-center py-16">
+      <div class="text-6xl mb-4">🎾</div>
+      <h2 class="text-xl font-bold text-gray-700">No hay torneos abiertos</h2>
+      <p class="text-gray-600 mt-1">Próximamente publicaremos los torneos disponibles.</p>
+    </div>`;
+  }
+
+  if (active.length > 0 && open.length === 0) {
+    return `${banners}
+      <div class="text-center py-8">
+        <p class="text-gray-500 mb-3">Hay un torneo en curso.</p>
+        <button onclick="nav('results')" class="btn-primary px-6 py-2.5 rounded-xl text-sm font-bold">Ver resultados →</button>
+      </div>`;
+  }
+
+  if (open.length === 0) return banners;
+
+  const t0 = open[0];
+
+  return `
+    ${banners}
+    <div class="max-w-lg mx-auto">
+      <!-- Form -->
+      <div id="reg-card" class="bg-white rounded-2xl shadow-sm overflow-hidden" style="border:1.5px solid #e5e7eb">
+        <div id="reg-full-banner" class="hidden px-6 py-3 text-center text-sm font-bold" style="background:#1a0a00;color:#f97316">
+          🔴 CUPO COMPLETO · Podés inscribirte como SUPLENTE
+        </div>
+        <div class="p-6">
+          <h3 id="reg-title" class="text-lg font-bold text-gray-800 mb-4">📝 Inscribir pareja</h3>
+          ${open.length > 1 ? `
+            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Torneo</label>
+            <select id="reg-tid" class="field mb-4" onchange="updateRegState()">
+              ${open.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+            </select>` :
+            `<input type="hidden" id="reg-tid" value="${t0.id}">`
+          }
+          <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Jugador/a 1 *</label>
+          <input id="reg-p1" type="text" placeholder="Apellido y Nombre" class="field mb-3"
+            oninput="this.value=this.value.toUpperCase()">
+          <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Jugador/a 2 *</label>
+          <input id="reg-p2" type="text" placeholder="Apellido y Nombre" class="field mb-3"
+            oninput="this.value=this.value.toUpperCase()">
+          <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Teléfono *</label>
+          <input id="reg-ph" type="tel" placeholder="11-1234-5678" class="field mb-3">
+          ${(() => {
+            const days = t0.playSlots && t0.playSlots.length > 0
+              ? [...new Set(t0.playSlots.map(s=>s.day).filter(Boolean))]
+              : (t0.playDays && t0.playDays.length > 0 ? t0.playDays
+                : ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo']);
+            const allowTwo = days.length >= 4;
+            const opts = days.map(d=>`<option value="${d}">${formatDay(d)}</option>`).join('');
+            return `
+              <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">
+                ${allowTwo ? 'Primer día que no podés jugar (opcional)' : '¿Hay algún día que no podés jugar?'}
+              </label>
+              <select id="reg-unavail" class="field mb-3">
+                <option value="">Puedo cualquier día</option>
+                ${opts}
+              </select>
+              ${allowTwo ? `
+              <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Segundo día que no podés jugar (opcional)</label>
+              <select id="reg-unavail2" class="field mb-5">
+                <option value="">Ninguno</option>
+                ${opts}
+              </select>` : '<div class="mb-2"></div>'}
+            `;
+          })()}
+          <div id="reg-msg" class="hidden mb-3 p-3 rounded-xl text-sm"></div>
+          <div id="reg-suplente-warn" class="hidden mb-3 p-3 rounded-xl text-sm font-semibold" style="background:#fff7ed;border:1.5px solid #f97316;color:#9a3412">
+            ⚠️ El torneo está completo. Al confirmar, quedarás en <strong>lista de espera</strong> como suplente. Te avisamos si se libera un lugar.
+          </div>
+          <button id="reg-btn" onclick="doRegister()" class="w-full py-3 rounded-xl font-bold text-sm" style="background:#B8FF00;color:#1A2500;border:none">
+            ✅ Confirmar inscripción
+          </button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function updateRegState() {
+  const sel  = document.getElementById('reg-tid'); if (!sel) return;
+  const tId  = sel.value || sel.getAttribute('value');
+  const t    = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  const confirmed = (db.pairs||[]).filter(p=>p.tId===tId && !p.suplente).length;
+  const full = t.maxPairs > 0 && confirmed >= t.maxPairs;
+
+  const card   = document.getElementById('reg-card');
+  const banner = document.getElementById('reg-full-banner');
+  const title  = document.getElementById('reg-title');
+  const warn   = document.getElementById('reg-suplente-warn');
+  const btn    = document.getElementById('reg-btn');
+
+  if (card)   card.style.borderColor   = full ? '#f97316' : '#e5e7eb';
+  if (banner) banner.classList.toggle('hidden', !full);
+  if (title)  title.textContent        = full ? '📋 Inscribirse como suplente' : '📝 Inscribir pareja';
+  if (warn)   warn.classList.toggle('hidden', !full);
+  if (btn) {
+    btn.style.background = full ? '#ea580c' : '#B8FF00';
+    btn.style.color      = full ? '#fff'     : '#1A2500';
+    btn.textContent      = full ? '📋 Anotarme como suplente' : '✅ Confirmar inscripción';
+  }
+}
+
+function doRegister() {
+  const tId = document.getElementById('reg-tid').value;
+  const p1  = document.getElementById('reg-p1').value.trim();
+  const p2  = document.getElementById('reg-p2').value.trim();
+  const ph  = document.getElementById('reg-ph').value.trim();
+  const unavailableDays = [
+    document.getElementById('reg-unavail')?.value || '',
+    document.getElementById('reg-unavail2')?.value || '',
+  ].filter(Boolean).filter((d,i,a) => a.indexOf(d)===i); // unique
+  const msg = document.getElementById('reg-msg');
+
+  msg.className = 'mb-3 p-3 rounded-xl text-sm';
+  if (!p1 || !p2) {
+    msg.className += ' bg-red-50 text-red-700';
+    msg.textContent = '⚠️ Completá los nombres de ambas jugadoras.';
+    return;
+  }
+  if (!ph) {
+    msg.className += ' bg-red-50 text-red-700';
+    msg.textContent = '⚠️ El teléfono es obligatorio para contactarte.';
+    return;
+  }
+  if (ph.replace(/\D/g,'').length < 9) {
+    msg.className += ' bg-red-50 text-red-700';
+    msg.textContent = '⚠️ El teléfono debe tener al menos 9 números.';
+    return;
+  }
+
+  const t = db.tournaments.find(x=>x.id===tId);
+  const regularCount = db.pairs.filter(p=>p.tId===tId && !p.suplente).length;
+  const isSuplente = t && t.maxPairs > 0 && regularCount >= t.maxPairs;
+
+  db.pairs.push({ id: uid(), tId, p1, p2, ph, label:`${p1} / ${p2}`,
+    ts: new Date().toISOString(), zone:null, pos:null,
+    suplente: isSuplente || false,
+    unavailableDays });
+  saveDB();
+
+  document.getElementById('reg-p1').value = '';
+  document.getElementById('reg-p2').value = '';
+  document.getElementById('reg-ph').value = '';
+
+  showRegModal(p1, p2, isSuplente);
+}
+
+function showRegModal(p1, p2, isSuplente) {
+  const modal = document.getElementById('reg-modal');
+  document.getElementById('reg-modal-icon').textContent  = isSuplente ? '📋' : '🎉';
+  document.getElementById('reg-modal-title').textContent = isSuplente ? '¡Anotados como suplentes!' : '¡Inscripción confirmada!';
+  document.getElementById('reg-modal-pair').textContent  = `${p1} / ${p2}`;
+  document.getElementById('reg-modal-msg').textContent   = isSuplente
+    ? 'Quedaron en lista de espera. Los contactamos si se libera un lugar.'
+    : 'Quedaron inscriptos en el torneo. ¡Buena suerte!';
+  modal.classList.remove('hidden');
+}
+
+function closeRegModal() {
+  document.getElementById('reg-modal').classList.add('hidden');
+  render();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  RESULTS (public)
+// ═══════════════════════════════════════════════════════════════════
+function viewResults() {
+  const ts = db.tournaments.filter(t => t.status === 'en_curso' || t.status === 'finalizado');
+  if (ts.length === 0) return `
+    <div class="text-center py-16">
+      <div class="text-5xl mb-4">📊</div>
+      <h2 class="text-xl font-bold text-gray-700">Sin torneos en curso</h2>
+      <p class="text-gray-600 mt-1">Aquí verás resultados en tiempo real cuando comience un torneo.</p>
+    </div>`;
+
+  // Determine active result tournament
+  if (!activeResultTId || !ts.find(t=>t.id===activeResultTId)) {
+    // Default: latest en_curso, else latest finalizado
+    const live = ts.filter(t=>t.status==='en_curso');
+    activeResultTId = (live.length > 0 ? live[live.length-1] : ts[ts.length-1]).id;
+  }
+  const t = ts.find(x=>x.id===activeResultTId);
+  const zones = getZones(t.id);
+
+  // Champion detection
+  const finalMatches = db.matches.filter(m=>m.tId===t.id && m.phase==='final');
+  const champion = finalMatches.length>0 && finalMatches[0].winner
+    ? (finalMatches[0].winner==='p1' ? finalMatches[0].p1Label : finalMatches[0].p2Label)
+    : null;
+
+  // Tournament selector (if multiple)
+  const selectorHtml = ts.length > 1 ? `
+    <div class="flex gap-2 overflow-x-auto pb-1 mb-4 -mx-1 px-1">
+      ${ts.slice().reverse().map(x => `
+        <button onclick="activeResultTId='${x.id}';render()"
+          class="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-all"
+          style="${x.id===t.id ? 'background:#1A2500;color:#B8FF00;border-color:#78C832' : 'background:white;color:#6b7280;border-color:#e5e7eb'}">
+          ${x.name}${x.status==='en_curso'?` <span style="color:#78C832">●</span>`:''}
+        </button>`).join('')}
+    </div>` : '';
+
+  let html = selectorHtml;
+
+  // Champion banner (if final is done)
+  if (champion) {
+    html += `
+      <div class="rounded-2xl p-6 mb-5 text-center" style="background:#1A2500;border:2px solid #78C832">
+        <div class="text-5xl mb-2">🏆</div>
+        <div class="text-xs font-bold uppercase tracking-widest mb-1" style="color:#78C832">¡Campeón ${t.name}!</div>
+        <div class="text-2xl font-black" style="color:#B8FF00">${champion}</div>
+      </div>`;
+  } else {
+    html += `
+      <div class="rounded-2xl p-4 mb-5 text-center" style="background:#1A2500;border:2px solid #B8FF00">
+        <h2 class="text-2xl font-black text-white">${t.name}</h2>
+        <p class="text-sm mt-0.5" style="color:#B8FF00">${t.status==='en_curso'?'Resultados en vivo':'Torneo finalizado'} · Fase de Zonas</p>
+      </div>`;
+  }
+
+  if (zones.length === 0) return html + `<div class="text-center text-gray-600 py-8">Las zonas aún no fueron asignadas.</div>`;
+
+  html += `
+  <div class="flex items-center justify-between mb-3">
+    <h3 class="text-base font-bold text-gray-700">🗂 Zonas</h3>
+    <button onclick="pdfZones('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:scale-95 transition-all" title="Descargar PDF de zonas">
+      📄 Descargar PDF
+    </button>
+  </div>
+  <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+    ${zones.map(z => publicZoneCard(t, z)).join('')}
+  </div>`;
+
+  // bracket
+  const bm = db.matches.filter(m => m.tId === t.id && m.phase !== 'zonas');
+  if (bm.length > 0) html += publicBracket(t, bm, champion);
+
+  return html;
+}
+
+function publicZoneCard(t, zone) {
+  const matches = zoneMatches(t.id, zone.letter);
+  const stand = standingsForZone(zone.pairs, matches);
+  const zSched = getZoneSchedule(t, zone.letter);
+  return `
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div class="px-4 py-2.5 text-center font-bold" style="background:#1A2500;color:#B8FF00">ZONA ${zone.letter}${zSched?`<span class="text-xs font-bold opacity-90 ml-2">${zSched}</span>`:''}</div>
+      <div class="p-3">
+        <table class="w-full text-xs">
+          <thead><tr class="text-gray-600 uppercase text-xs">
+            <th class="text-left pb-1.5">#</th>
+            <th class="text-left pb-1.5">Pareja</th>
+            <th class="text-center pb-1.5">PG</th>
+            <th class="text-center pb-1.5">DS</th>
+            <th class="text-center pb-1.5">DJ</th>
+          </tr></thead>
+          <tbody>
+            ${(() => {
+              const qN = zone.pairs.length === 4 ? 3 : 2;
+              return stand.map((s,i) => `
+              <tr style="${i<qN?'background:#FDEDF1':''}" class="${i<qN?'font-semibold':''}">
+                <td class="py-1.5 pl-1">${i<qN?'✅':''} ${i+1}</td>
+                <td class="py-1.5">
+                  <span class="inline-block px-1.5 rounded text-xs font-bold mr-1" style="background:#edfad0;color:#3d6600">
+                    ${zone.letter}${s.pair.pos}
+                  </span>
+                  ${s.pair.p1.split(' ')[0]} / ${s.pair.p2.split(' ')[0]}
+                </td>
+                <td class="text-center py-1.5">${s.pg}</td>
+                <td class="text-center py-1.5">${s.sg-s.sp}</td>
+                <td class="text-center py-1.5">${s.jg-s.jp}</td>
+              </tr>`).join('');
+            })()}
+          </tbody>
+        </table>
+      </div>
+      <div class="border-t border-gray-100 px-3 py-2.5">
+        <div class="text-xs font-semibold text-gray-600 mb-1.5 uppercase">Partidos</div>
+        ${matches.length === 0
+          ? (() => {
+              const L = zone.letter;
+              const ps = zone.pairs;
+              let labels = [];
+              if (ps.length === 3) {
+                labels = [`${L}1 vs ${L}2`, `Gan.(${L}1/${L}2) vs ${L}3`, `Perd.(${L}1/${L}2) vs ${L}3`];
+              } else if (ps.length === 4) {
+                labels = [`${L}1 vs ${L}4`, `${L}2 vs ${L}3`, `Gan.(1/4) vs Gan.(2/3)`, `Perd.(1/4) vs Perd.(2/3)`];
+              } else {
+                for (let i = 0; i < ps.length; i++)
+                  for (let j = i+1; j < ps.length; j++)
+                    labels.push(`${L}${ps[i].pos} vs ${L}${ps[j].pos}`);
+              }
+              if (labels.length === 0) return `<div class="text-xs text-gray-500 italic">Sin resultados</div>`;
+              return labels.map((lbl, mi) => {
+                const mt = getMatchTime(t, zone.letter, mi);
+                return `<div class="text-xs py-0.5 flex gap-1.5 items-center text-gray-600">
+                  ${mt?`<span class="font-bold text-gray-500 w-12 flex-shrink-0">${mt}hs</span>`:''}
+                  <span>${lbl}</span>
+                </div>`;
+              }).join('');
+            })()
+          : matches.map((m, mi) => {
+            const pair1 = zone.pairs.find(p=>p.id===m.p1Id);
+            const pair2 = zone.pairs.find(p=>p.id===m.p2Id);
+            const p1n = m.p1Label || (pair1 ? `${pair1.p1.split(' ')[0]}/${pair1.p2.split(' ')[0]}` : '?');
+            const p2n = pair2 ? `${pair2.p1.split(' ')[0]}/${pair2.p2.split(' ')[0]}` : '?';
+            const p1tag = pair1 ? `${pair1.zone}${pair1.pos}` : null;
+            const p2tag = pair2 ? `${pair2.zone}${pair2.pos}` : null;
+            const sc = m.sets.filter(([a,b])=>a!==null&&b!==null&&a!==''&&b!=='').map(([a,b])=>`${a}-${b}`).join(' ');
+            const mt = getMatchTime(t, zone.letter, mi);
+            return `<div class="text-xs py-1 flex flex-col gap-0.5">
+              ${mt?`<div class="flex items-center gap-1 text-gray-500 mb-0.5"><span class="font-bold">${mt}hs</span></div>`:''}
+              <div class="flex items-center gap-1.5">
+                <span class="font-bold ${m.winner==='p1'?'text-white':'text-gray-700'} px-1.5 py-0.5 rounded flex-shrink-0 text-xs" style="background:${m.winner==='p1'?'#1A2500':'#f3f4f6'};min-width:16px;text-align:center;">${p1tag||'?'}</span>
+                <span class="flex-1 font-${m.winner==='p1'?'bold':'normal'} truncate" style="color:${m.winner==='p1'?'#1A2500':m.winner==='p2'?'#9ca3af':'#374151'}">${p1n}</span>
+                <span class="font-bold text-gray-500 flex-shrink-0">${sc ? sc.split(' ').map(s=>s.split('-')[0]).join(' ') : '—'}</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="font-bold ${m.winner==='p2'?'text-white':'text-gray-700'} px-1.5 py-0.5 rounded flex-shrink-0 text-xs" style="background:${m.winner==='p2'?'#1A2500':'#f3f4f6'};min-width:16px;text-align:center;">${p2tag||'?'}</span>
+                <span class="flex-1 font-${m.winner==='p2'?'bold':'normal'} truncate" style="color:${m.winner==='p2'?'#1A2500':m.winner==='p1'?'#9ca3af':'#374151'}">${p2n}</span>
+                <span class="font-bold text-gray-500 flex-shrink-0">${sc ? sc.split(' ').map(s=>s.split('-')[1]).join(' ') : '—'}</span>
+              </div>
+              ${m.photo?`<button onclick="openPhotoViewer('${m.id}')" class="text-xs text-blue-500 mt-0.5 self-end">📷 Ver foto</button>`:''}
+            </div>`;
+          }).join('')}
+      </div>
+    </div>`;
+}
+
+function bracketMatchCard(m, phase) {
+  const sets = m.sets.filter(([a,b])=>a!==null&&b!==null&&!(a===0&&b===0));
+  const p1Sets = sets.map(([a])=>a);
+  const p2Sets = sets.map(([,b])=>b);
+  const scoreHtml = (scores, isWinner) => scores.length
+    ? scores.map(s=>`<span class="inline-block w-6 text-center font-bold text-sm ${isWinner?'text-[#B8FF00]':'text-gray-600'}">${s}</span>`).join('')
+    : '';
+  const p1Win = m.winner==='p1', p2Win = m.winner==='p2';
+  const schedLabel = m.matchDay ? `${m.matchDay}${m.matchTime?' '+m.matchTime+'hs':''}` : null;
+  const phColor = PHASE_COLORS[phase||m.phase] || '#6b7280';
+  return `
+    <div class="rounded-xl overflow-hidden shadow-sm" style="border:2px solid ${phColor}">
+      ${schedLabel ? `<div class="px-3 py-1 text-xs font-bold text-center" style="background:#f0fde4;color:#3d6600">📅 ${schedLabel}</div>` : ''}
+      <div class="flex items-center gap-2 px-3 py-2.5 ${p1Win?'':'bg-white'}" style="${p1Win?'background:#1A2500':''}">
+        ${m.p1Seed?`<span class="text-xs font-bold flex-shrink-0 px-1 rounded" style="${p1Win?'background:#2d4000;color:#B8FF00':'background:#edfad0;color:#3d6600'}">${m.p1Seed}</span>`:''}
+        <span class="flex-1 text-sm font-semibold truncate ${p1Win?'':'text-gray-700'}" style="${p1Win?'color:#B8FF00':''}">${m.p1Label||'Por definir'}</span>
+        <div class="flex gap-0.5">${scoreHtml(p1Sets, p1Win)}</div>
+        ${p1Win?`<span class="text-xs font-bold ml-1 flex-shrink-0" style="color:#78C832">✓</span>`:'<span class="w-4"></span>'}
+      </div>
+      <div class="h-px bg-gray-200"></div>
+      <div class="flex items-center gap-2 px-3 py-2.5 ${p2Win?'':'bg-white'}" style="${p2Win?'background:#1A2500':''}">
+        ${m.p2Seed?`<span class="text-xs font-bold flex-shrink-0 px-1 rounded" style="${p2Win?'background:#2d4000;color:#B8FF00':'background:#edfad0;color:#3d6600'}">${m.p2Seed}</span>`:''}
+        <span class="flex-1 text-sm font-semibold truncate ${p2Win?'':'text-gray-700'}" style="${p2Win?'color:#B8FF00':''}">${m.p2Label||'Por definir'}</span>
+        <div class="flex gap-0.5">${scoreHtml(p2Sets, p2Win)}</div>
+        ${p2Win?`<span class="text-xs font-bold ml-1 flex-shrink-0" style="color:#78C832">✓</span>`:'<span class="w-4"></span>'}
+      </div>
+    </div>`;
+}
+
+const PHASE_COLORS = {
+  '16avos': '#3b82f6',  /* azul       */
+  '8avos':  '#22c55e',  /* verde       */
+  'cuartos':'#eab308',  /* amarillo    */
+  'semis':  '#f97316',  /* naranja     */
+  'final':  '#ef4444',  /* rojo        */
+};
+
+function publicBracket(t, bm, champion) {
+  const hasBracket = bm.some(m => BRACKET_ORDER.includes(m.phase));
+  if (!hasBracket) {
+    return `
+      <div class="mt-6">
+        <h3 class="text-xl font-bold text-gray-800 mb-4">🏆 Bracket Final</h3>
+        <div class="bg-white rounded-2xl border border-gray-100 p-6 text-center">
+          <div class="text-3xl mb-2">📅</div>
+          <div class="text-sm font-semibold text-gray-700 mb-1">Bracket pendiente</div>
+          <div class="text-xs text-gray-500">El bracket se publicará una vez que finalicen las zonas.</div>
+        </div>
+      </div>`;
+  }
+  return `
+    <div class="mt-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-xl font-bold text-gray-800">🏆 Bracket Final</h3>
+        <button onclick="pdfBracket('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:scale-95 transition-all">
+          📄 PDF
+        </button>
+      </div>
+      <div class="rounded-2xl border border-gray-100 shadow-sm" style="background:#fafafa;overflow-x:auto;">
+        <div style="padding:12px 8px 4px 12px;min-width:min-content;">
+          ${renderBracketVisual(t, bm, [], true)}
+        </div>
+        ${bm.filter(m=>BRACKET_ORDER.includes(m.phase)&&m.photo).map(m=>`
+          <div class="border-t border-gray-100 px-4 py-2 flex items-center gap-3 bg-white">
+            <span class="text-xs text-gray-500">${BRACKET_NAMES[m.phase]||m.phase} #${m.matchNum}</span>
+            <button onclick="openPhotoViewer('${m.id}')" class="text-xs font-bold text-blue-600 hover:underline ml-auto">📷 Ver foto</button>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  ADMIN LOGIN
+// ═══════════════════════════════════════════════════════════════════
+function viewLogin() {
+  return `
+    <div class="max-w-sm mx-auto pt-12">
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+        <div class="w-16 h-16 rounded-full mx-auto mb-4 flex flex-col items-center justify-center select-none"
+             style="background:#111;border:2px solid #B8FF00">
+          <span class="font-black leading-none" style="color:#B8FF00;font-size:18px">X3</span>
+          <span class="font-black leading-none" style="color:#fff;font-size:9px;letter-spacing:2px">PADEL</span>
+        </div>
+        <h2 class="text-xl font-bold text-gray-800 mb-1">Acceso Admin</h2>
+        <p class="text-sm text-gray-600 mb-6">Ingresá la contraseña para gestionar los torneos</p>
+        <input id="login-pass" type="password" placeholder="Contraseña" class="field mb-3 text-center"
+          onkeydown="if(event.key==='Enter')doLogin()">
+        <div id="login-err" class="hidden text-red-500 text-sm mb-3"></div>
+        <button onclick="doLogin()" class="btn-primary w-full py-2.5 rounded-xl font-bold text-sm">Ingresar</button>
+      </div>
+    </div>`;
+}
+
+function doLogin() {
+  const pass = document.getElementById('login-pass').value;
+  const stored = localStorage.getItem('x3padel_pass') || 'x3padelsebastian';
+  if (pass === stored) { adminOk = true; render(); }
+  else {
+    const err = document.getElementById('login-err');
+    err.className = 'text-red-500 text-sm mb-3';
+    err.textContent = '❌ Contraseña incorrecta.';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  ADMIN DASHBOARD
+// ═══════════════════════════════════════════════════════════════════
+function adminSubHeader(t) {
+  const tabs = [
+    { id:'admin-pairs',   icon:'👥', label:'Inscriptos' },
+    { id:'admin-zones',   icon:'🗂', label:'Zonas'      },
+    { id:'admin-scores',  icon:'📊', label:'Resultados' },
+    { id:'admin-bracket', icon:'🏆', label:'Bracket'    },
+  ];
+  return `
+    <div class="sticky top-16 z-40 bg-white -mx-4 px-4 pt-3 mb-5" style="border-bottom:1.5px solid #e5e7eb;box-shadow:0 1px 6px rgba(0,0,0,.06)">
+      <div class="flex items-center gap-2 mb-2">
+        <button onclick="nav('admin')" class="text-gray-600 hover:text-gray-700 text-sm font-medium flex-shrink-0">← Admin</button>
+        <span class="text-gray-500 flex-shrink-0">/</span>
+        <span class="font-bold text-gray-800 text-sm truncate">${t.name}</span>
+      </div>
+      <div class="flex gap-0 overflow-x-auto">
+        ${tabs.map(tab => `
+          <button onclick="go('${tab.id}','${t.id}')"
+            class="px-4 py-2 text-sm font-semibold whitespace-nowrap flex-shrink-0 transition-colors"
+            style="border-bottom:2.5px solid ${currentView===tab.id?'#B8FF00':'transparent'};color:${currentView===tab.id?'#3d6600':'#6b7280'};background:none">
+            ${tab.icon} ${tab.label}
+          </button>`).join('')}
+      </div>
+    </div>`;
+}
+
+function viewAdmin() {
+  return `
+    <div>
+      <div class="flex items-center justify-between mb-5">
+        <h2 class="text-xl font-bold text-gray-800">Panel de Administración</h2>
+        <div class="flex gap-2 flex-wrap">
+          <button onclick="toggleForm('form-new-t')" class="btn-primary px-4 py-2 rounded-xl text-sm font-bold">+ Nuevo torneo</button>
+          <button onclick="exportDB()" class="btn-sec px-4 py-2 rounded-xl text-sm font-medium" title="Descargar backup de todos los datos">💾 Exportar</button>
+          <button onclick="document.getElementById('import-file').click()" class="btn-sec px-4 py-2 rounded-xl text-sm font-medium" title="Cargar backup">📂 Importar</button>
+          <input id="import-file" type="file" accept=".json" class="hidden" onchange="importDB(this)">
+          <button onclick="adminOk=false;nav('home')" class="btn-sec px-4 py-2 rounded-xl text-sm font-medium">Salir</button>
+        </div>
+      </div>
+
+      <!-- New tournament form -->
+      <div id="form-new-t" class="hidden bg-white rounded-2xl border border-gray-100 p-5 mb-5 shadow-sm">
+        <h3 class="font-bold text-gray-700 mb-4">Crear torneo</h3>
+        <div class="grid sm:grid-cols-2 gap-4 mb-4">
+          <div class="sm:col-span-2">
+            <label class="label">Nombre del torneo</label>
+            <input id="nt-name" type="text" placeholder="Ej: Torneo Femenino Agosto 2026" class="field">
+          </div>
+          <div>
+            <label class="label">Fecha de inicio</label>
+            <input id="nt-date" type="text" placeholder="01/09/2026" class="field">
+          </div>
+          <div>
+            <label class="label">Cupo máximo de parejas</label>
+            <input id="nt-max" type="number" min="2" max="200" placeholder="Ej: 12  (dejar vacío = sin límite)" class="field">
+          </div>
+          <div class="sm:col-span-2">
+            <label class="label">Días de juego <span class="normal-case font-normal text-gray-600">(cada zona dura 3hs — 3 partidos de 1hs c/u)</span></label>
+            <div id="nt-slots" class="space-y-2 mb-2"></div>
+            <button type="button" onclick="addDaySlot('nt-slots')" class="text-sm font-semibold" style="color:#5a9900">+ Agregar día</button>
+            <p class="text-xs text-gray-600 mt-1">El sistema asigna las zonas al azar respetando los días que los participantes no pueden jugar.</p>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="createTournament()" class="btn-primary px-5 py-2 rounded-lg text-sm font-bold">Crear</button>
+          <button onclick="toggleForm('form-new-t')" class="btn-sec px-5 py-2 rounded-lg text-sm font-medium">Cancelar</button>
+        </div>
+      </div>
+
+      <!-- Edit tournament form -->
+      <div id="form-edit-t" class="hidden bg-white rounded-2xl border border-blue-200 p-5 mb-5 shadow-sm">
+        <h3 class="font-bold text-gray-700 mb-4">✏️ Editar torneo</h3>
+        <input id="et-id" type="hidden">
+        <div class="grid sm:grid-cols-2 gap-4 mb-4">
+          <div class="sm:col-span-2">
+            <label class="label">Nombre del torneo</label>
+            <input id="et-name" type="text" class="field">
+          </div>
+          <div>
+            <label class="label">Fecha de inicio</label>
+            <input id="et-date" type="text" class="field">
+          </div>
+          <div>
+            <label class="label">Cupo máximo de parejas</label>
+            <input id="et-max" type="number" min="2" max="200" placeholder="Sin límite" class="field">
+            <p id="et-promote-hint" class="text-xs text-green-700 mt-1 hidden"></p>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="label">Días de juego</label>
+            <div id="et-slots" class="space-y-2 mb-2"></div>
+            <button type="button" onclick="addDaySlot('et-slots')" class="text-sm font-semibold" style="color:#5a9900">+ Agregar día</button>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="saveEditTournament()" class="btn-primary px-5 py-2 rounded-lg text-sm font-bold">Guardar cambios</button>
+          <button onclick="document.getElementById('form-edit-t').classList.add('hidden')" class="btn-sec px-5 py-2 rounded-lg text-sm font-medium">Cancelar</button>
+        </div>
+      </div>
+
+      <!-- Tournament cards -->
+      ${db.tournaments.length === 0 ? `
+        <div class="text-center py-14 text-gray-600">
+          <div class="text-4xl mb-3">🏆</div>
+          <p>Aún no hay torneos. Creá uno arriba.</p>
+        </div>` :
+        `<div class="space-y-4">
+          ${db.tournaments.slice().reverse().map(t => {
+            const pCount = (db.pairs||[]).filter(p=>p.tId===t.id && !p.suplente).length;
+            const sCount = (db.pairs||[]).filter(p=>p.tId===t.id && p.suplente).length;
+            const statusBadge = {
+              inscripciones: '<span class="badge-green">🟢 Inscripciones</span>',
+              en_curso:      '<span class="badge-blue">🔵 En curso</span>',
+              finalizado:    '<span class="badge-gray">⚫ Finalizado</span>',
+            }[t.status] || '';
+            return `
+              <div class="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 class="font-bold text-gray-900">${t.name}</h3>
+                    <div class="text-sm text-gray-600 mt-0.5 flex gap-3">
+                      ${t.startDate?`<span>📅 ${t.startDate}</span>`:''}
+                      <span>👥 ${pCount}${t.maxPairs>0?' / '+t.maxPairs:''} pareja${pCount!==1?'s':''}${sCount>0?' · '+sCount+' suplente'+(sCount!==1?'s':''):''}</span>
+                      ${t.maxPairs>0&&pCount>=t.maxPairs?`<span class="text-red-500 font-semibold">🔴 Cupo completo</span>`:''}
+                    </div>
+                  </div>
+                  ${statusBadge}
+                </div>
+                <div class="flex flex-wrap gap-2 mt-4">
+                  <button onclick="go('admin-pairs','${t.id}')" class="chip-btn">👥 Inscriptos (${pCount})</button>
+                  <button onclick="go('admin-zones','${t.id}')" class="chip-btn">🗂 Zonas</button>
+                  <button onclick="go('admin-scores','${t.id}')" class="chip-btn">📊 Resultados</button>
+                  <button onclick="go('admin-bracket','${t.id}')" class="chip-btn">🏆 Bracket</button>
+                  <button onclick="openEditTournament('${t.id}')" class="chip-btn">✏️ Editar</button>
+                  <button onclick="cycleStatus('${t.id}')" class="chip-btn chip-alt">
+                    ${t.status==='inscripciones'?'🔒 Cerrar inscripciones':t.status==='en_curso'?'⏹ Finalizar torneo':'✓ Finalizado'}
+                  </button>
+                  <button onclick="delTournament('${t.id}')" class="chip-btn chip-danger">🗑 Eliminar</button>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>`
+      }
+    </div>`;
+}
+
+function createTournament() {
+  const name = document.getElementById('nt-name').value.trim();
+  const date = document.getElementById('nt-date').value.trim();
+  const maxPairs = parseInt(document.getElementById('nt-max').value) || 0;
+  const playSlots = readDaySlots('nt-slots');
+  if (!name) { alert('Ingresá un nombre'); return; }
+  db.tournaments.push({ id:uid(), name, startDate:date, maxPairs, playSlots, status:'inscripciones', ts:new Date().toISOString() });
+  const sc = document.getElementById('nt-slots');
+  sc.innerHTML = '';
+  addDaySlot('nt-slots');
+  saveDB(); render();
+}
+
+// Add a day-slot row: date | # zones | start time | remove
+function addDaySlot(containerId, day, count, time) {
+  const sc = document.getElementById(containerId); if (!sc) return;
+  const div = document.createElement('div');
+  div.className = 'slot-row flex items-center gap-2 flex-wrap';
+  div.innerHTML = `
+    <input type="date" value="${day||''}" class="slot-day border border-gray-200 rounded-lg px-2 py-1.5 text-sm flex-1 outline-none" style="min-width:130px">
+    <div class="flex items-center gap-1 flex-shrink-0">
+      <span class="text-xs font-bold text-gray-500">Zonas:</span>
+      <input type="number" value="${count||1}" min="1" max="20" class="slot-count border border-gray-200 rounded-lg px-2 py-1.5 text-sm w-16 outline-none">
+    </div>
+    <div class="flex items-center gap-1 flex-shrink-0">
+      <span class="text-xs font-bold text-gray-500">Desde:</span>
+      <input type="time" value="${time||'20:00'}" class="slot-time border border-gray-200 rounded-lg px-2 py-1 text-sm w-28 outline-none">
+    </div>
+    <button type="button" onclick="this.closest('.slot-row').remove()" class="text-gray-500 hover:text-red-500 text-lg leading-none flex-shrink-0">✕</button>
+  `;
+  sc.appendChild(div);
+}
+
+// Convert day-slot rows in a container → expanded playSlots array (1 per zone)
+function readDaySlots(containerId) {
+  const slots = [];
+  document.querySelectorAll(`#${containerId} .slot-row`).forEach(row => {
+    const day   = row.querySelector('.slot-day').value   || '';
+    const count = parseInt(row.querySelector('.slot-count').value) || 1;
+    const time  = row.querySelector('.slot-time').value  || '20:00';
+    for (let i = 0; i < count; i++) slots.push({ day, time });
+  });
+  return slots;
+}
+
+// Convert existing playSlots array → grouped daySched for display
+function playSlotsToDaySched(playSlots) {
+  const map = {};
+  (playSlots || []).forEach(s => {
+    const key = (s.day||'') + '|' + (s.time||'20:00');
+    if (!map[key]) map[key] = { day: s.day||'', time: s.time||'20:00', count: 0 };
+    map[key].count++;
+  });
+  return Object.values(map);
+}
+
+function openEditTournament(tId) {
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  // Close new-tournament form if open
+  document.getElementById('form-new-t').classList.add('hidden');
+  document.getElementById('et-id').value   = tId;
+  document.getElementById('et-name').value = t.name;
+  document.getElementById('et-date').value = t.startDate || '';
+  document.getElementById('et-max').value  = t.maxPairs || '';
+  // Populate slots (grouped by day)
+  const sc = document.getElementById('et-slots');
+  sc.innerHTML = '';
+  const sched = playSlotsToDaySched(t.playSlots);
+  if (sched.length > 0) sched.forEach(s => addDaySlot('et-slots', s.day, s.count, s.time));
+  else addDaySlot('et-slots');
+  // Update promote hint
+  updatePromoteHint(tId);
+  document.getElementById('et-max').oninput = () => updatePromoteHint(tId);
+  // Scroll into view
+  const form = document.getElementById('form-edit-t');
+  form.classList.remove('hidden');
+  form.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function updatePromoteHint(tId) {
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  const newMax = parseInt(document.getElementById('et-max').value) || 0;
+  const hint   = document.getElementById('et-promote-hint');
+  if (newMax <= 0) { hint.classList.add('hidden'); return; }
+  const confirmed = (db.pairs||[]).filter(p=>p.tId===tId && !p.suplente).length;
+  const suplentes = (db.pairs||[]).filter(p=>p.tId===tId && p.suplente)
+    .sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+  const toPromote = Math.max(0, Math.min(suplentes.length, newMax - confirmed));
+  if (toPromote > 0) {
+    hint.textContent = `✅ Se promoverán ${toPromote} suplente${toPromote!==1?'s':''} a confirmadas.`;
+    hint.classList.remove('hidden');
+  } else if (newMax < confirmed) {
+    hint.textContent = `⚠️ El nuevo cupo (${newMax}) es menor a las confirmadas actuales (${confirmed}).`;
+    hint.style.color = '#b45309';
+    hint.classList.remove('hidden');
+  } else {
+    hint.classList.add('hidden');
+  }
+}
+
+function saveEditTournament() {
+  const tId = document.getElementById('et-id').value;
+  const t   = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  const newName   = document.getElementById('et-name').value.trim();
+  const newDate   = document.getElementById('et-date').value.trim();
+  const newMax    = parseInt(document.getElementById('et-max').value) || 0;
+  const newSlots = readDaySlots('et-slots');
+  if (!newName) { alert('Ingresá un nombre'); return; }
+
+  // Auto-promote suplentes if cupo increased
+  if (newMax > 0) {
+    const confirmed = (db.pairs||[]).filter(p=>p.tId===tId && !p.suplente).length;
+    const slots     = Math.max(0, newMax - confirmed);
+    if (slots > 0) {
+      const toPromote = (db.pairs||[])
+        .filter(p=>p.tId===tId && p.suplente)
+        .sort((a,b)=>new Date(a.ts)-new Date(b.ts))
+        .slice(0, slots);
+      toPromote.forEach(p => { p.suplente = false; });
+      if (toPromote.length > 0)
+        alert(`✅ ${toPromote.length} pareja${toPromote.length!==1?'s':''} promovida${toPromote.length!==1?'s':''} de suplente a confirmada.`);
+    }
+  }
+
+  t.name      = newName;
+  t.startDate = newDate;
+  t.maxPairs  = newMax;
+  t.playSlots = newSlots;
+
+  saveDB();
+  document.getElementById('form-edit-t').classList.add('hidden');
+  render();
+}
+
+function cycleStatus(id) {
+  const t = db.tournaments.find(t=>t.id===id);
+  if (!t || t.status==='finalizado') return;
+  t.status = t.status==='inscripciones' ? 'en_curso' : 'finalizado';
+  saveDB(); render();
+}
+
+function delTournament(id) {
+  if (!confirm('¿Eliminar este torneo y todos sus datos?')) return;
+  db.tournaments = db.tournaments.filter(t=>t.id!==id);
+  db.pairs = db.pairs.filter(p=>p.tId!==id);
+  db.matches = db.matches.filter(m=>m.tId!==id);
+  saveDB(); render();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  ADMIN – PAIRS
+// ═══════════════════════════════════════════════════════════════════
+function viewAdminPairs() {
+  const t = db.tournaments.find(t=>t.id===activeTId); if (!t) return '';
+  const allPairs = db.pairs.filter(p=>p.tId===t.id);
+  const pairs = allPairs.filter(p=>!p.suplente);
+  const suplentes = allPairs.filter(p=>p.suplente);
+  const pairRow = (p,i,isSup) => `
+    <div class="px-5 py-3 flex items-center gap-3 border-b border-gray-50 hover:bg-gray-50" style="${isSup?'background:#fffbf7':''}">
+      <span class="w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center flex-shrink-0"
+            style="background:${isSup?'#f97316':'#B8FF00'};color:${isSup?'#fff':'#111'}">${isSup?'S':''}${i+1}</span>
+      <div class="flex-1">
+        <div class="text-sm font-medium text-gray-800">${p.p1} / ${p.p2}
+          ${isSup ? '<span class="ml-2 text-xs font-bold px-2 py-0.5 rounded-full" style="background:#fff7ed;color:#f97316">SUPLENTE</span>' : ''}
+        </div>
+        <div class="text-xs text-gray-600 flex gap-3 flex-wrap">
+          ${p.ph?`<span>📱 ${p.ph}</span>`:''}
+          ${p.zone?`<span class="font-medium" style="color:#5a9900">Zona ${p.zone}${p.pos}</span>`:''}
+          ${getPairUnavailDays(p).map(d=>`<span class="text-red-500">🚫${formatDay(d)}</span>`).join('')}
+          <span>${new Date(p.ts).toLocaleDateString('es-AR')}</span>
+        </div>
+      </div>
+      ${isSup ? `<button onclick="promoverSuplente('${p.id}')" class="text-xs font-bold px-2 py-1 rounded mr-1" style="background:#edfad0;color:#3d6600" title="Promover a inscripta">▲</button>` : ''}
+      <button onclick="removePair('${p.id}')" class="text-gray-500 hover:text-red-500 text-lg leading-none">✕</button>
+    </div>`;
+  return `
+    <div>
+      ${adminSubHeader(t)}
+      <div class="bg-white rounded-2xl border border-gray-100 p-5 mb-5 shadow-sm">
+        <h3 class="font-semibold text-gray-700 mb-3 text-sm">Agregar pareja manualmente</h3>
+        ${(() => {
+          const uniqueDays = getTournamentUniqueDays(t);
+          const allowTwo = uniqueDays.length >= 4;
+          const dayOpts = (placeholder) => `<option value="">${placeholder}</option>` +
+            (uniqueDays.length > 0 ? uniqueDays : ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'])
+              .map(d=>`<option value="${d}">${formatDay(d)}</option>`).join('');
+          return `
+          <div class="flex flex-wrap gap-3">
+            <input id="ap1" type="text" placeholder="Jugadora 1" class="field flex-1 min-w-36"
+              oninput="this.value=this.value.toUpperCase()">
+            <input id="ap2" type="text" placeholder="Jugadora 2" class="field flex-1 min-w-36"
+              oninput="this.value=this.value.toUpperCase()">
+            <input id="aph" type="tel" placeholder="Teléfono *" class="field w-36">
+            <select id="ap-unavail" class="field w-36" title="${allowTwo?'1er día no disponible':'Día no disponible'}">
+              ${dayOpts('Cualquier día')}
+            </select>
+            ${allowTwo ? `<select id="ap-unavail2" class="field w-36" title="2do día no disponible">
+              ${dayOpts('2do día (opt.)')}
+            </select>` : ''}
+            <button onclick="addPair()" class="btn-primary px-4 py-2 rounded-lg text-sm font-bold">Agregar</button>
+          </div>`;
+        })()}
+        <div id="ap-msg" class="hidden mt-2 p-2 rounded-lg text-xs text-red-700 bg-red-50"></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <span class="font-bold text-gray-700 text-sm">${pairs.length} pareja${pairs.length!==1?'s':''}${t.maxPairs>0?` / ${t.maxPairs}`:''}</span>
+          ${allPairs.length > 0 ? `<button onclick="if(confirm('¿Eliminar todas las parejas?')){db.pairs=db.pairs.filter(p=>p.tId!=='${t.id}');saveDB();render()}" class="text-xs text-red-400 hover:text-red-600">Eliminar todas</button>` : ''}
+        </div>
+        ${pairs.length === 0 ?
+          `<div class="p-8 text-center text-gray-600 italic text-sm">Sin inscriptos aún</div>` :
+          pairs.map((p,i) => pairRow(p,i,false)).join('')
+        }
+        ${suplentes.length > 0 ? `
+          <div class="px-5 py-2 text-xs font-bold uppercase" style="background:#fff7ed;color:#f97316">Lista de espera (suplentes ${suplentes.length})</div>
+          ${suplentes.map((p,i) => pairRow(p,i,true)).join('')}` : ''}
+      </div>
+    </div>`;
+}
+
+function addPair() {
+  const p1 = document.getElementById('ap1').value.trim();
+  const p2 = document.getElementById('ap2').value.trim();
+  const ph = document.getElementById('aph').value.trim();
+  const unavailableDays = [
+    document.getElementById('ap-unavail')?.value || '',
+    document.getElementById('ap-unavail2')?.value || '',
+  ].filter(Boolean).filter((d,i,a) => a.indexOf(d)===i);
+  const apMsg = document.getElementById('ap-msg');
+  if (!p1||!p2) { apMsg.textContent='⚠️ Completá los nombres'; apMsg.className='mt-2 p-2 rounded-lg text-xs text-red-700 bg-red-50'; return; }
+  if (!ph) { apMsg.textContent='⚠️ El teléfono es obligatorio'; apMsg.className='mt-2 p-2 rounded-lg text-xs text-red-700 bg-red-50'; return; }
+  if (ph.replace(/\D/g,'').length < 9) { apMsg.textContent='⚠️ El teléfono debe tener al menos 9 números'; apMsg.className='mt-2 p-2 rounded-lg text-xs text-red-700 bg-red-50'; return; }
+  const t = db.tournaments.find(x=>x.id===activeTId);
+  const regularCount = db.pairs.filter(p=>p.tId===activeTId && !p.suplente).length;
+  const isSuplente = t && t.maxPairs > 0 && regularCount >= t.maxPairs;
+  db.pairs.push({ id:uid(), tId:activeTId, p1, p2, ph, label:`${p1} / ${p2}`,
+    ts:new Date().toISOString(), zone:null, pos:null, suplente: isSuplente, unavailableDays });
+  saveDB(); render();
+}
+
+function promoverSuplente(id) {
+  const p = db.pairs.find(x=>x.id===id);
+  if (!p) return;
+  if (!confirm(`¿Promover a ${p.p1} / ${p.p2} como inscripta oficial?`)) return;
+  p.suplente = false;
+  saveDB(); render();
+}
+
+function removePair(id) {
+  const p = db.pairs.find(x=>x.id===id);
+  if (!confirm('¿Eliminar esta pareja?')) return;
+  const wasTitular = p && !p.suplente;
+  const tId = p ? p.tId : null;
+  db.pairs = db.pairs.filter(x=>x.id!==id);
+  // Auto-promote first suplente when a titular is removed
+  if (wasTitular && tId) {
+    const first = db.pairs
+      .filter(x=>x.tId===tId && x.suplente)
+      .sort((a,b)=>new Date(a.ts)-new Date(b.ts))[0];
+    if (first) {
+      first.suplente = false;
+      alert(`✅ ${first.p1} / ${first.p2} fue promovida de la lista de espera.`);
+    }
+  }
+  saveDB(); render();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  ADMIN – ZONES
+// ═══════════════════════════════════════════════════════════════════
+function computeZoneSizes(N) {
+  if (N < 3) return [];
+  const rem = N % 3;
+  const nZ4 = (rem === 0) ? 0 : (rem === 1 ? 1 : (N >= 8 ? 2 : 1));
+  const nZones = Math.floor(N / 3);
+  return Array.from({length: nZones}, (_, i) => i < nZ4 ? 4 : 3);
+}
+
+function viewAdminZones() {
+  const t = db.tournaments.find(t=>t.id===activeTId); if (!t) return '';
+  const pairs = db.pairs.filter(p=>p.tId===t.id && !p.suplente);
+  const assigned = pairs.filter(p=>p.zone);
+  const zoneSizes = computeZoneSizes(pairs.length);
+  const nZones = zoneSizes.length;
+  const nZ4 = zoneSizes.filter(s=>s===4).length;
+  const nZ3 = zoneSizes.filter(s=>s===3).length;
+  const zonaDesc = nZ4 > 0
+    ? `${nZ4} zona${nZ4!==1?'s':''} de 4 + ${nZ3} de 3`
+    : `${nZones} zona${nZones!==1?'s':''} de 3`;
+
+  return `
+    <div>
+      ${adminSubHeader(t)}
+      <div class="bg-white rounded-2xl border border-gray-100 p-5 mb-5 shadow-sm">
+        <div class="flex flex-wrap items-center gap-4">
+          <div class="text-sm text-gray-600">
+            <b>${pairs.length}</b> parejas → <b>${zonaDesc}</b>
+          </div>
+          <div class="flex gap-2 ml-auto flex-wrap">
+            <button onclick="autoZones()" class="btn-primary px-4 py-2 rounded-xl text-sm font-bold">🔀 Asignar automáticamente</button>
+            ${assigned.length>0?`<button onclick="clearZones()" class="btn-sec px-4 py-2 rounded-xl text-sm font-medium">↺ Limpiar</button>`:''}
+            ${assigned.length>0?`<button onclick="pdfZones('${t.id}')" class="px-4 py-2 rounded-xl text-sm font-bold border border-gray-300 bg-white text-gray-700 hover:bg-gray-50">📄 PDF</button>`:''}
+            ${assigned.length>0 && t.status!=='finalizado' ? `<button onclick="publishZones('${t.id}')" class="px-4 py-2 rounded-xl text-sm font-bold" style="background:#B8FF00;color:#1A2500">${t.status==='en_curso'?'✅ Publicado — Republicar':'🚀 Confirmar y publicar'}</button>` : ''}
+          </div>
+        </div>
+      </div>
+
+      ${assigned.length === 0 ? `
+        <div class="text-center py-10 text-gray-600">
+          <div class="text-3xl mb-2">🗂</div>
+          <p class="text-sm">Hacé clic en "Asignar automáticamente" para distribuir las parejas al azar.</p>
+        </div>` : `
+        <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          ${getZones(t.id).map((zone) => {
+            const zSched = getZoneSchedule(t, zone.letter);
+            // Build match schedule rows with pair identifiers (A1 vs A2, etc.)
+            const L = zone.letter;
+            const pairCount = zone.pairs.length;
+            let matchLabels;
+            if (pairCount === 3) {
+              matchLabels = [
+                `${L}1 vs ${L}2`,
+                `Gan.(${L}1/${L}2) vs ${L}3`,
+                `Perd.(${L}1/${L}2) vs ${L}3`,
+              ];
+            } else if (pairCount === 4) {
+              matchLabels = [
+                `${L}1 vs ${L}4`,
+                `${L}2 vs ${L}3`,
+                `Gan.(${L}1/${L}4) vs Gan.(${L}2/${L}3)`,
+                `Perd.(${L}1/${L}4) vs Perd.(${L}2/${L}3)`,
+              ];
+            } else {
+              matchLabels = [];
+              const ps = zone.pairs;
+              for (let i = 0; i < ps.length; i++)
+                for (let j = i+1; j < ps.length; j++)
+                  matchLabels.push(`${L}${ps[i].pos} vs ${L}${ps[j].pos}`);
+            }
+            return `
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div class="px-4 py-2.5 flex items-center justify-between" style="background:#1A2500;color:#B8FF00">
+                <span class="font-bold">ZONA ${zone.letter}</span>
+                ${zSched ? `<span class="text-xs font-bold opacity-90">${zSched}</span>` : ''}
+              </div>
+              ${zone.pairs.map(p => `
+                <div class="px-4 py-2.5 border-b border-gray-50 flex items-center gap-2">
+                  <span class="px-1.5 py-0.5 rounded text-xs font-bold flex-shrink-0"
+                        style="background:#edfad0;color:#3d6600">${zone.letter}${p.pos}</span>
+                  <span class="text-sm text-gray-800 truncate flex-1">${p.p1} / ${p.p2}</span>
+                  ${getPairUnavailDays(p).map(d=>`<span class="text-xs text-red-400 flex-shrink-0" title="No puede jugar ${formatDay(d)}">🚫${formatDay(d).slice(0,6)}</span>`).join('')}
+                  <button onclick="openEditPairModal('${p.id}')" class="flex-shrink-0 text-gray-400 hover:text-gray-600 text-sm leading-none px-1" title="Editar pareja">✏️</button>
+                </div>`).join('')}
+              ${zSched ? `
+              <div class="px-4 py-2 bg-gray-50 border-t border-gray-100">
+                <div class="text-xs font-semibold text-gray-600 uppercase mb-1.5">Horario de partidos</div>
+                ${matchLabels.map((lbl, mi) => {
+                  const mt = getMatchTime(t, zone.letter, mi);
+                  return mt ? `<div class="text-xs py-0.5 flex items-center gap-2">
+                    <span class="font-bold text-gray-500 w-14 flex-shrink-0">${mt}hs</span>
+                    <span class="text-gray-600">${lbl}</span>
+                  </div>` : '';
+                }).join('')}
+              </div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>`}
+    </div>`;
+}
+
+function autoZones() {
+  const t = db.tournaments.find(t=>t.id===activeTId);
+  const pairs = db.pairs.filter(p=>p.tId===t.id && !p.suplente);
+  if (pairs.length === 0) { alert('No hay parejas inscriptas'); return; }
+
+  const zoneSizes = computeZoneSizes(pairs.length);
+  if (zoneSizes.length === 0) { alert('Se necesitan al menos 3 parejas para armar zonas'); return; }
+
+  const playDays = t.playSlots ? t.playSlots.map(s=>s.day).filter(Boolean)
+                               : (t.playDays || []);
+  const sh = smartShuffleZones(pairs, playDays, zoneSizes);
+
+  // Assign zone letters and positions based on cumulative zone sizes
+  let offset = 0;
+  for (let zi = 0; zi < zoneSizes.length; zi++) {
+    const letter = String.fromCharCode(65 + zi);
+    const size = zoneSizes[zi];
+    for (let pos = 1; pos <= size; pos++) {
+      const p = sh[offset++];
+      if (p) {
+        const dbp = db.pairs.find(x=>x.id===p.id);
+        dbp.zone = letter;
+        dbp.pos  = pos;
+      }
+    }
+  }
+
+  // Randomly assign day slots to zone letters
+  if (t.playSlots && t.playSlots.length > 0) {
+    const slots = [...t.playSlots].sort(() => Math.random() - 0.5);
+    const zoneMap = {};
+    for (let z = 0; z < zoneSizes.length; z++) {
+      const letter = String.fromCharCode(65 + z);
+      zoneMap[letter] = slots[z] || slots[slots.length - 1];
+    }
+    t.zoneAssignments = zoneMap;
+  }
+
+  genZoneMatches(t, sh, zoneSizes);
+  saveDB(); render();
+}
+
+function smartShuffleZones(pairs, playDays, zoneSizes) {
+  const nZones = zoneSizes.length;
+  if (!playDays || playDays.length === 0) {
+    return [...pairs].sort(() => Math.random() - 0.5);
+  }
+
+  // Random shuffle first for fairness, then sort most-constrained first
+  const shuffled = [...pairs].sort(() => Math.random() - 0.5);
+  shuffled.sort((a, b) => getPairUnavailDays(b).length - getPairUnavailDays(a).length);
+
+  const buckets = Array.from({length: nZones}, () => []);
+
+  for (const pair of shuffled) {
+    let bestZone = -1, bestScore = -Infinity;
+    for (let zi = 0; zi < nZones; zi++) {
+      if (buckets[zi].length >= zoneSizes[zi]) continue; // full
+      const zoneDay = playDays[zi % playDays.length];
+      const unavDays = getPairUnavailDays(pair);
+      const canPlay = unavDays.length === 0 || !unavDays.includes(zoneDay);
+      const score = (canPlay ? 1000 : 0) - buckets[zi].length;
+      if (score > bestScore) { bestScore = score; bestZone = zi; }
+    }
+    if (bestZone >= 0) buckets[bestZone].push(pair);
+  }
+
+  return buckets.flat();
+}
+
+function genZoneMatches(t, sh, zoneSizes) {
+  db.matches = db.matches.filter(m => !(m.tId===t.id && m.phase==='zonas'));
+
+  let offset = 0;
+  for (let z = 0; z < zoneSizes.length; z++) {
+    const letter = String.fromCharCode(65 + z);
+    const size = zoneSizes[z];
+    const zp = sh.slice(offset, offset + size);
+    offset += size;
+
+    if (size === 3) {
+      // P1 vs P2, then winner vs P3, loser vs P3
+      if (zp.length >= 2) mkMatch(t.id, 'zonas', letter, 1, zp[0]?.id, zp[1]?.id);
+      if (zp.length >= 3) {
+        mkMatch(t.id, 'zonas', letter, 2, null, zp[2]?.id, `Gan.${letter}1/${letter}2`);
+        mkMatch(t.id, 'zonas', letter, 3, null, zp[2]?.id, `Perd.${letter}1/${letter}2`);
+      }
+    } else if (size === 4) {
+      // FAP zone-of-4 format:
+      // M1: P1 vs P4 (top vs bottom, simultaneous with M2)
+      // M2: P2 vs P3 (middle two)
+      // M3: Winner M1 vs Winner M2 → 1st & 2nd place (both qualify)
+      // M4: Loser M1 vs Loser M2 → 3rd place qualifies, 4th eliminated
+      if (zp.length >= 4) {
+        mkMatch(t.id, 'zonas', letter, 1, zp[0]?.id, zp[3]?.id);
+        mkMatch(t.id, 'zonas', letter, 2, zp[1]?.id, zp[2]?.id);
+        mkMatch(t.id, 'zonas', letter, 3, null, null, `Gan.${letter}1/${letter}4`, `Gan.${letter}2/${letter}3`);
+        mkMatch(t.id, 'zonas', letter, 4, null, null, `Perd.${letter}1/${letter}4`, `Perd.${letter}2/${letter}3`);
+      }
+    } else {
+      // Round robin fallback for other sizes
+      let mn = 1;
+      for (let i = 0; i < zp.length; i++)
+        for (let j = i+1; j < zp.length; j++)
+          mkMatch(t.id, 'zonas', letter, mn++, zp[i]?.id, zp[j]?.id);
+    }
+  }
+}
+
+function mkMatch(tId, phase, zone, matchNum, p1Id, p2Id, pair1Label, pair2Label) {
+  db.matches.push({
+    id: uid(), tId, phase, zone, matchNum,
+    p1Id: p1Id||null, p2Id: p2Id||null,
+    p1Label: pair1Label||null, p2Label: pair2Label||null,
+    sets: [[null,null],[null,null],[null,null]],
+    winner: null,
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PDF EXPORT  (iframe → diálogo de impresión → Guardar como PDF)
+// ═══════════════════════════════════════════════════════════════════
+const PDF_ZONE_STYLE = `
+*{box-sizing:border-box;margin:0;padding:0;print-color-adjust:exact !important;-webkit-print-color-adjust:exact !important;color-adjust:exact !important}
+body{font-family:Arial,Helvetica,sans-serif;padding:14px;background:#fff;color:#111}
+@media print{@page{margin:8mm;size:A4 portrait}body{padding:0}*{print-color-adjust:exact !important;-webkit-print-color-adjust:exact !important;color-adjust:exact !important}}
+
+/* === Outer wrapper (matches reference border) === */
+.page-outer{border:1.5px solid #bbb;padding:10px 10px 8px}
+
+/* === Header === */
+.page-title{text-align:center;font-size:22px;font-weight:900;text-transform:uppercase;
+  padding:10px 16px;border:2px solid #5a8c00;background:#B8FF00 !important;color:#1A2500;margin-bottom:0;letter-spacing:.5px}
+.page-subtitle{text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;
+  letter-spacing:1px;padding:6px 10px;background:#e0e0e0;color:#444;margin-bottom:12px;
+  border:1px solid #ccc;border-top:none}
+
+/* === Grid === */
+.zones-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.zone-card{border:1.5px solid #999;break-inside:avoid;page-break-inside:avoid;overflow:hidden}
+
+/* === ZONA X title — dark green bg, lime text === */
+.zone-title{background:#1A2500 !important;color:#B8FF00 !important;
+  text-align:center;font-size:17px;font-weight:900;padding:9px 8px;
+  letter-spacing:1px;text-transform:uppercase;display:block}
+
+/* === PAREJAS subheader — medium green bg, white text === */
+.section-hdr{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;
+  padding:4px 8px;background:#4a8c1c !important;color:#fff !important;display:block}
+
+/* === Pair rows — plain white, bold text === */
+.pairs-tbl{width:100%;border-collapse:collapse}
+.pairs-tbl td{padding:4px 8px;font-size:10.5px;border-bottom:1px solid #e0e0e0;vertical-align:middle}
+.pairs-tbl tr:last-child td{border-bottom:none}
+.pairs-tbl td.pos{font-weight:900;color:#1A2500;width:30px;white-space:nowrap}
+.pairs-tbl td.names{font-weight:700;color:#111}
+
+/* === Match table — header matches zone title color === */
+.match-tbl{width:100%;border-collapse:collapse;border-top:2px solid #1A2500}
+.match-tbl th{font-size:8.5px;font-weight:700;text-transform:uppercase;padding:5px 6px;
+  text-align:left;background:#1A2500 !important;color:#B8FF00 !important;
+  border-right:1px solid #2d4000;border-bottom:none}
+.match-tbl th:last-child{border-right:none}
+.match-tbl td{font-size:9.5px;padding:4.5px 6px;border-bottom:1px solid #e8e8e8;color:#222;
+  border-right:1px solid #efefef}
+.match-tbl td:last-child{border-right:none}
+.match-tbl tr:last-child td{border-bottom:none}
+.match-tbl tr:nth-child(odd) td{background:#f5fdf0 !important}
+.match-tbl tr:nth-child(even) td{background:#fff}
+.lugar{font-weight:700;color:#1A2500;text-align:center !important}
+
+/* === Footer === */
+.footer-note{margin-top:8px;border:1px solid #ccc;padding:6px 12px;font-size:8px;
+  color:#444;text-align:center;background:#f8f8f8 !important;line-height:1.4}
+
+/* === Compact mode (≤8 zones → fits on 1 page) === */
+.compact .page-outer{padding:8px 8px 6px}
+.compact .page-title{font-size:18px;padding:7px 14px}
+.compact .page-subtitle{font-size:10px;padding:4px 10px;margin-bottom:8px}
+.compact .zones-grid{gap:7px}
+.compact .zone-title{font-size:13px;padding:5px 8px}
+.compact .section-hdr{font-size:8px;padding:2px 7px}
+.compact .pairs-tbl td{padding:2.5px 7px;font-size:9.5px}
+.compact .match-tbl th{font-size:7.5px;padding:3px 5px}
+.compact .match-tbl td{font-size:8.5px;padding:3px 5px}
+.compact .footer-note{margin-top:6px;padding:5px 10px;font-size:7.5px}
+`;
+
+const PDF_BRACKET_STYLE = `
+*{box-sizing:border-box;margin:0;padding:0;print-color-adjust:exact !important;-webkit-print-color-adjust:exact !important;color-adjust:exact !important}
+body{font-family:Arial,Helvetica,sans-serif;padding:8px 10px;background:#fff;color:#111}
+@media print{@page{margin:5mm;size:A4 landscape}body{padding:0}*{print-color-adjust:exact !important;-webkit-print-color-adjust:exact !important;color-adjust:exact !important}}
+.page-title{text-align:center;font-size:16px;font-weight:900;text-transform:uppercase;padding:6px 14px;border:2px solid #aaa;color:#111;letter-spacing:.5px;margin-bottom:0}
+.page-subtitle{text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:4px 10px;background:#e4e4e4;color:#333;margin-bottom:6px;border:1px solid #ccc;border-top:none}
+.bracket{display:flex;width:100%;height:540px}
+.r-col{display:flex;flex-direction:column;flex:1.4;min-width:0}
+.conn-col{display:flex;flex-direction:column;width:14px;flex-shrink:0}
+.champ-col{display:flex;flex-direction:column;width:82px;flex-shrink:0}
+.r-hdr{text-align:center;font-size:8px;font-weight:700;text-transform:uppercase;padding:3px 2px;color:#fff;letter-spacing:.5px;height:22px;display:flex;align-items:center;justify-content:center}
+.hdr-blank{height:22px;flex-shrink:0}
+.r-body{display:flex;flex-direction:column;flex:1;overflow:hidden}
+.conn-body{display:flex;flex-direction:column;flex:1}
+.m-wrap{display:flex;align-items:center;min-height:0;overflow:hidden}
+.m-inner{width:100%;border:1px solid #ccc;border-radius:3px;overflow:hidden;margin:1px 0}
+.m-sched{font-size:7px;font-weight:700;color:#3d6600;background:#edfad0;text-align:center;padding:1.5px 3px;border-bottom:1px solid #c5e080}
+.t-slot{display:flex;align-items:center;gap:3px;padding:3px 4px;border-bottom:1px solid #e8e8e8;min-height:17px}
+.t-slot:last-child{border-bottom:none}
+.t-slot.bye{background:#f5f5f5;color:#aaa;font-style:italic;font-size:7.5px;justify-content:center}
+.t-slot.win{background:#1A2500}
+.t-slot.win .t-name{color:#B8FF00}
+.t-slot.win .t-seed{background:#2d4000;color:#B8FF00}
+.t-seed{font-size:6.5px;font-weight:700;padding:0 2px;border-radius:2px;background:#edfad0;color:#1A2500;flex-shrink:0;line-height:1.4}
+.t-name{flex:1;font-weight:600;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:7.5px}
+.t-score{font-size:6.5px;color:#888;flex-shrink:0}
+.champ-box{background:#1A2500;border-radius:5px;padding:10px 6px;text-align:center;margin:6px 2px}
+.champ-label{font-size:7px;font-weight:700;color:#78C832;text-transform:uppercase;letter-spacing:.5px}
+.champ-name{font-size:9px;font-weight:900;color:#B8FF00;margin-top:3px;word-break:break-word;line-height:1.3}
+.bkt-footer{margin-top:5px;font-size:7.5px;color:#777;text-align:center}
+`;
+
+function pdfZones(tId) {
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  const zones = getZones(tId);
+  if (zones.length === 0) { alert('No hay zonas asignadas aún.'); return; }
+
+  const zonesHtml = zones.map(zone => {
+    const L = zone.letter;
+    const slot = (t.zoneAssignments && t.zoneAssignments[L])
+                  ? t.zoneAssignments[L]
+                  : (t.playSlots && t.playSlots[L.charCodeAt(0)-65]) || null;
+    const dayStr = slot?.day ? formatDay(slot.day) : '';
+
+    const pairCount = zone.pairs.length;
+    let matchLabels;
+    if (pairCount === 3) {
+      matchLabels = [`${L}1 vs ${L}2`, `Gan.(${L}1/${L}2) vs ${L}3`, `Perd.(${L}1/${L}2) vs ${L}3`];
+    } else if (pairCount === 4) {
+      matchLabels = [`${L}1 vs ${L}4`, `${L}2 vs ${L}3`, `Gan.(1/4) vs Gan.(2/3)`, `Perd.(1/4) vs Perd.(2/3)`];
+    } else {
+      matchLabels = [];
+      for (let i=0;i<zone.pairs.length;i++)
+        for (let j=i+1;j<zone.pairs.length;j++)
+          matchLabels.push(`${L}${zone.pairs[i].pos} vs ${L}${zone.pairs[j].pos}`);
+    }
+
+    const matchRows = matchLabels.map((lbl, mi) => {
+      const mt = getMatchTime(t, L, mi);
+      return `<tr>
+        <td>${lbl}</td>
+        <td>${dayStr}</td>
+        <td>${mt ? mt+'hs' : ''}</td>
+        <td class="lugar">X3</td>
+      </tr>`;
+    }).join('');
+
+    const pairsRows = zone.pairs.map(p =>
+      `<tr><td class="pos">${L}${p.pos}</td><td class="names">${p.p1.toUpperCase()} - ${p.p2.toUpperCase()}</td></tr>`
+    ).join('');
+
+    return `<div class="zone-card">
+      <div class="zone-title">ZONA ${L}</div>
+      <div class="section-hdr">PAREJAS</div>
+      <table class="pairs-tbl">${pairsRows}</table>
+      <table class="match-tbl">
+        <thead><tr><th>PARTIDO</th><th>DÍA</th><th>HORA</th><th>LUGAR</th></tr></thead>
+        <tbody>${matchRows}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+
+  const compact = zones.length <= 8 ? 'compact' : '';
+  _printFrame(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Zonas – ${t.name}</title>
+  <style>${PDF_ZONE_STYLE}</style></head><body class="${compact}">
+    <div class="page-outer">
+      <div class="page-title">${t.name.toUpperCase()}</div>
+      <div class="page-subtitle">FIXTURE DE ZONAS · FASE CLASIFICATORIA</div>
+      <div class="zones-grid">${zonesHtml}</div>
+    </div>
+    <div class="footer-note">DESEMPATE: Empate 1-1 en sets → Super Tiebreak a 11 puntos. Clasifican las 2 mejores parejas de zonas de 3 y las 3 mejores de zonas de 4.<br>Criterio (zona de 4): 1° Ganador de M3 | 2° Perdedor de M3 | 3° Ganador de M4 | 4° Perdedor de M4</div>
+  </body></html>`);
+}
+
+function pdfBracket(tId) {
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  const ORDER = ['16avos','8avos','cuartos','semis','final'];
+  const bm = db.matches.filter(m=>m.tId===tId && m.phase!=='zonas');
+  const phases = ORDER.filter(ph=>bm.some(m=>m.phase===ph));
+  if (phases.length === 0) { alert('No hay rondas del bracket cargadas aún.'); return; }
+
+  const PHASE_SHORT = {'16avos':'16AVOS','8avos':'OCTAVOS','cuartos':'CUARTOS','semis':'SEMIFINAL','final':'FINAL'};
+  const PH_COLOR   = {'16avos':'#1e3a8a','8avos':'#14532d','cuartos':'#713f12','semis':'#7c2d12','final':'#7f1d1d'};
+
+  const matchesByPhase = {};
+  for (const ph of phases) {
+    matchesByPhase[ph] = bm.filter(m=>m.phase===ph).sort((a,b)=>a.matchNum-b.matchNum);
+  }
+  const firstCount = matchesByPhase[phases[0]].length;
+
+  const tSlot = (label, isBye, isWin, seed, sc) => {
+    if (isBye) return `<div class="t-slot bye">— BYE —</div>`;
+    return `<div class="t-slot${isWin?' win':''}">
+      ${seed?`<span class="t-seed">${seed}</span>`:''}
+      <span class="t-name">${label||'Por definir'}</span>
+      ${sc?`<span class="t-score">${sc}</span>`:''}
+    </div>`;
+  };
+
+  let cols = '';
+  phases.forEach((ph, ri) => {
+    const phMs = matchesByPhase[ph];
+    const fpm = firstCount / phMs.length;   // flex units per match
+    const color = PH_COLOR[ph] || '#374151';
+
+    const cards = phMs.map(m => {
+      const sets = (m.sets||[]).filter(([a,b])=>a!=null&&b!=null&&!(a===0&&b===0));
+      const sc = sets.map(([a,b])=>`${a}-${b}`).join(' ');
+      const p1Win = m.winner==='p1', p2Win = m.winner==='p2';
+      const sched = m.matchDay ? `${m.matchDay}${m.matchTime?' · '+m.matchTime+'hs':''}` : '';
+      const p1Bye = (m.p1Label||'').toUpperCase()==='BYE';
+      const p2Bye = (m.p2Label||'').toUpperCase()==='BYE';
+      return `<div class="m-wrap" style="flex:${fpm}">
+        <div class="m-inner">
+          ${sched?`<div class="m-sched">${sched}</div>`:''}
+          ${tSlot(m.p1Label, p1Bye, p1Win, m.p1Seed, p1Win?sc:'')}
+          ${tSlot(m.p2Label, p2Bye, p2Win, m.p2Seed, p2Win?sc:'')}
+        </div>
+      </div>`;
+    }).join('');
+
+    cols += `<div class="r-col">
+      <div class="r-hdr" style="background:${color}">${PHASE_SHORT[ph]||ph.toUpperCase()}</div>
+      <div class="r-body">${cards}</div>
+    </div>`;
+
+    if (ri < phases.length - 1) {
+      const nextMs = matchesByPhase[phases[ri+1]];
+      let arms = '';
+      for (let ni = 0; ni < nextMs.length; ni++) {
+        arms += `<div style="flex:${fpm};border-right:1.5px solid #bbb;border-bottom:1.5px solid #bbb"></div>`;
+        arms += `<div style="flex:${fpm};border-right:1.5px solid #bbb;border-top:1.5px solid #bbb"></div>`;
+      }
+      cols += `<div class="conn-col"><div class="hdr-blank"></div><div class="conn-body">${arms}</div></div>`;
+    }
+  });
+
+  const finalMs = matchesByPhase['final'] || [];
+  const champ = finalMs.length && finalMs[0].winner
+    ? (finalMs[0].winner==='p1' ? finalMs[0].p1Label : finalMs[0].p2Label) : null;
+
+  cols += `<div class="champ-col">
+    <div class="r-hdr" style="background:#0a1500">CAMPEÓN</div>
+    <div class="r-body" style="align-items:center;justify-content:center;display:flex;flex-direction:column">
+      <div class="champ-box">
+        <div style="font-size:20px;line-height:1">🏆</div>
+        ${champ
+          ? `<div class="champ-label" style="margin-top:5px">¡Campeón!</div><div class="champ-name">${champ}</div>`
+          : `<div style="font-size:7.5px;color:#78C832;margin-top:5px">Por definir</div>`}
+      </div>
+    </div>
+  </div>`;
+
+  _printFrame(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Bracket – ${t.name}</title>
+  <style>${PDF_BRACKET_STYLE}</style></head><body>
+    <div class="page-title">${t.name.toUpperCase()}</div>
+    <div class="page-subtitle">CUADRO ELIMINATORIO</div>
+    <div class="bracket">${cols}</div>
+    <div class="bkt-footer">Clasificados de zona según posición final. Lugar: X3 Padel Sunchales</div>
+  </body></html>`);
+}
+
+function _printFrame(html) {
+  const frame = document.createElement('iframe');
+  frame.style.cssText = 'position:fixed;right:-9999px;bottom:-9999px;width:800px;height:600px;visibility:hidden;border:0';
+  document.body.appendChild(frame);
+  frame.contentDocument.open();
+  frame.contentDocument.write(html);
+  frame.contentDocument.close();
+  setTimeout(() => {
+    try {
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+    } catch(e) { console.error(e); }
+    setTimeout(() => document.body.removeChild(frame), 2000);
+  }, 600);
+}
+
+function publishZones(tId) {
+  const t = db.tournaments.find(t=>t.id===tId); if (!t) return;
+  t.status = 'en_curso';
+  saveDB(); render();
+}
+
+function clearZones() {
+  if (!confirm('¿Limpiar todas las zonas?')) return;
+  db.pairs.forEach(p=>{ if(p.tId===activeTId){p.zone=null;p.pos=null;} });
+  db.matches = db.matches.filter(m => !(m.tId===activeTId && m.phase==='zonas'));
+  saveDB(); render();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  ADMIN – SCORES (zone results)
+// ═══════════════════════════════════════════════════════════════════
+function viewAdminScores() {
+  const t = db.tournaments.find(t=>t.id===activeTId); if (!t) return '';
+  const zones = getZones(t.id);
+  const bracketExists = db.matches.some(m=>m.tId===t.id && m.phase!=='zonas');
+
+  if (zones.length === 0) return `
+    <div>
+      ${adminSubHeader(t)}
+      <div class="text-center py-12">
+        <p class="text-gray-500 mb-4">Las zonas aún no fueron asignadas.</p>
+        <button onclick="go('admin-zones','${t.id}')" class="btn-primary px-5 py-2.5 rounded-xl text-sm font-bold">Ir a Zonas →</button>
+      </div>
+    </div>`;
+
+  return `
+    <div>
+      ${adminSubHeader(t)}
+      <div class="space-y-5">
+        ${zones.map((zone) => {
+          const matches = zoneMatches(t.id, zone.letter).sort((a,b)=>a.matchNum-b.matchNum);
+          const stand = standingsForZone(zone.pairs, matches);
+          const ppz = zone.pairs.length;
+          const qualifyN = ppz === 4 ? 3 : 2;
+          const zSched = getZoneSchedule(t, zone.letter);
+
+          return `
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div class="px-5 py-3 flex items-center justify-between" style="background:#1A2500;color:#B8FF00">
+                <span class="font-bold">ZONA ${zone.letter}</span>
+                <div class="flex items-center gap-2">
+                  ${zSched ? `<span class="text-xs font-bold opacity-90">${zSched}</span>` : ''}
+                  ${bracketExists ? `<button onclick="toggleZoneLock('${t.id}')" class="text-xs opacity-70 hover:opacity-100 cursor-pointer px-1 py-0.5 rounded transition-opacity" title="${t.zonesUnlocked?'Bloquear zonas':'Desbloquear para editar'}">${t.zonesUnlocked?'🔓 Desbloqueado':'🔒 Bloqueado'}</button>` : ''}
+                </div>
+              </div>
+
+              <!-- Match cards with modal trigger -->
+              <div class="divide-y divide-gray-50">
+                ${matches.map((m, mi) => {
+                  const p1 = zone.pairs.find(p=>p.id===m.p1Id);
+                  const p2 = zone.pairs.find(p=>p.id===m.p2Id);
+                  const p1n = m.p1Label || (p1 ? `${p1.p1.split(' ')[0]}/${p1.p2.split(' ')[0]}` : '?');
+                  const p2n = p2 ? `${p2.p1.split(' ')[0]}/${p2.p2.split(' ')[0]}` : '?';
+                  const p1tag = p1 ? `${p1.zone}${p1.pos}` : null;
+                  const p2tag = p2 ? `${p2.zone}${p2.pos}` : null;
+                  const L = zone.letter;
+                  let matchLabel;
+                  if (ppz === 3) {
+                    matchLabel = mi===0 ? `${L}1 vs ${L}2` : mi===1 ? `Gan.(${L}1/${L}2) vs ${L}3` : `Perd.(${L}1/${L}2) vs ${L}3`;
+                  } else if (ppz === 4) {
+                    if (mi===0) matchLabel = `${L}1 vs ${L}4`;
+                    else if (mi===1) matchLabel = `${L}2 vs ${L}3`;
+                    else if (mi===2) matchLabel = `Gan.(${L}1/${L}4) vs Gan.(${L}2/${L}3)`;
+                    else matchLabel = `Perd.(${L}1/${L}4) vs Perd.(${L}2/${L}3)`;
+                  } else {
+                    const lp1 = m.p1Id && zone.pairs.find(p=>p.id===m.p1Id) ? `${L}${zone.pairs.find(p=>p.id===m.p1Id).pos}` : (m.p1Label||'?');
+                    const lp2 = m.p2Id && zone.pairs.find(p=>p.id===m.p2Id) ? `${L}${zone.pairs.find(p=>p.id===m.p2Id).pos}` : (m.p2Label||'?');
+                    matchLabel = `${lp1} vs ${lp2}`;
+                  }
+                  const matchTime = getMatchTime(t, zone.letter, mi);
+                  const scoreText = m.winner
+                    ? m.sets.filter(([a,b])=>a!==null&&b!==null).map(([a,b])=>`${a}-${b}`).join(' ')
+                    : null;
+                  const canEnter = (!bracketExists || t.zonesUnlocked) && !!m.p1Id && !!m.p2Id;
+
+                  return `
+                    <div class="p-4">
+                      <div class="flex items-center gap-2 mb-2">
+                        <span class="text-xs font-semibold text-gray-600 uppercase">${matchLabel}</span>
+                        ${matchTime ? `<span class="text-xs font-bold px-1.5 py-0.5 rounded" style="background:#edfad0;color:#3d6600">${matchTime}hs</span>` : ''}
+                        ${m.photo ? `<button onclick="openPhotoViewer('${m.id}')" data-photo="${m.id}" class="text-sm ml-auto leading-none" title="Ver foto">📷</button>` : ''}
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                          ${p1tag ? `<span class="text-xs font-bold px-1.5 py-0.5 rounded flex-shrink-0" style="background:#edfad0;color:#3d6600">${p1tag}</span>` : ''}
+                          <span class="text-sm font-medium text-gray-800 truncate">${p1n}</span>
+                        </div>
+                        ${canEnter ? `
+                          <button onclick="openScoreModal('${m.id}', false)"
+                            class="px-3 py-1.5 rounded-lg text-sm font-bold flex-shrink-0 transition-all"
+                            style="background:${m.winner?'#edfad0':'#f3f4f6'};color:${m.winner?'#3d6600':'#6b7280'}">
+                            ${m.winner ? (scoreText + ' ✎') : '⊕ Cargar'}
+                          </button>` :
+                          m.winner ? `<span class="px-3 py-1.5 rounded-lg text-sm font-bold flex-shrink-0" style="background:#edfad0;color:#3d6600">${scoreText}</span>` :
+                          !m.p1Id||!m.p2Id ? `<span class="text-xs text-gray-500 px-2 flex-shrink-0">Esperando P.1</span>` :
+                          `<span class="text-xs text-gray-500 px-2 flex-shrink-0">Sin resultado</span>`}
+                        <div class="flex items-center gap-1.5 flex-1 min-w-0 justify-end">
+                          <span class="text-sm font-medium text-gray-800 truncate">${p2n}</span>
+                          ${p2tag ? `<span class="text-xs font-bold px-1.5 py-0.5 rounded flex-shrink-0" style="background:#edfad0;color:#3d6600">${p2tag}</span>` : ''}
+                        </div>
+                      </div>
+                      ${m.winner ? `<div class="mt-1.5 text-xs font-semibold text-green-600">✅ Ganó: ${m.winner==='p1'?(p1tag?p1tag+' ':'')+p1n:(p2tag?p2tag+' ':'')+p2n}</div>` : ''}
+                      <!-- Photo upload -->
+                      <div class="mt-2 flex items-center gap-2">
+                        <label class="cursor-pointer flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700">
+                          <input type="file" accept="image/*" class="hidden" onchange="attachMatchPhoto('${m.id}',this)">
+                          ${m.photo ? '🔄 Cambiar foto' : '📷 Adjuntar foto'}
+                        </label>
+                        ${m.photo ? `<button onclick="removeMatchPhoto('${m.id}')" class="text-xs text-red-400 hover:text-red-600">✕ Quitar</button>` : ''}
+                        ${m.photo ? `<img src="${m.photo}" class="h-8 w-8 rounded object-cover ml-auto cursor-pointer" onclick="openPhotoViewer('${m.id}')" title="Ver foto completa">` : ''}
+                      </div>
+                    </div>`;
+                }).join('')}
+              </div>
+
+              <!-- Standings -->
+              <div class="bg-gray-50 px-5 py-3 border-t border-gray-100">
+                <div class="text-xs font-bold text-gray-600 uppercase mb-2">Posiciones</div>
+                ${stand.map((s,i) => `
+                  <div class="flex items-center gap-2 text-xs py-0.5">
+                    <span class="w-5 font-bold ${i<qualifyN?'text-green-600':'text-gray-600'}">${i+1}°</span>
+                    <span class="font-medium text-gray-700">${s.pair.p1.split(' ')[0]} / ${s.pair.p2.split(' ')[0]}</span>
+                    <span class="ml-auto text-gray-600">PG:${s.pg} DS:${s.sg-s.sp} DJ:${s.jg-s.jp}</span>
+                  </div>`).join('')}
+              </div>
+            </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function setScore(matchId, setIdx, side, value) {
+  const m = db.matches.find(x=>x.id===matchId); if (!m) return;
+  m.sets[setIdx][side] = value===''?null:parseInt(value);
+
+  // auto-compute winner
+  let p1s=0, p2s=0;
+  m.sets.forEach(([a,b]) => {
+    if (a!==null && b!==null) { if(+a>+b)p1s++; else if(+b>+a)p2s++; }
+  });
+  m.winner = p1s>=2?'p1':p2s>=2?'p2':null;
+
+  // After zone match is done, propagate results to dependent matches
+  if (m.phase==='zonas' && m.winner) {
+    const zm = db.matches.filter(x=>x.tId===m.tId&&x.zone===m.zone&&x.phase==='zonas').sort((a,b)=>a.matchNum-b.matchNum);
+    const m1 = zm.find(x=>x.matchNum===1);
+    const m2 = zm.find(x=>x.matchNum===2);
+    const m3 = zm.find(x=>x.matchNum===3);
+    const m4 = zm.find(x=>x.matchNum===4);
+
+    // Detect zone type from PAIR COUNT (not match count) — most reliable source of truth
+    const zonePairs = db.pairs.filter(p => p.tId===m.tId && p.zone===m.zone && !p.suplente);
+    const isZone4 = zonePairs.length === 4;
+
+    if (!isZone4) {
+      // 3-pair zone: after match 1, populate p1Id for matches 2 & 3
+      if (m.matchNum===1 && m3) {
+        if (m2) m2.p1Id = m.winner==='p1' ? m.p1Id : m.p2Id;
+        if (m3) m3.p1Id = m.winner==='p1' ? m.p2Id : m.p1Id;
+      }
+    } else {
+      // 4-pair zone: if m3 or m4 don't exist yet (old data), create them first
+      if (!m3 || !m4) {
+        const zp = zonePairs.sort((a,b)=>a.pos-b.pos);
+        if (!m3) {
+          db.matches.push({ id:uid(), tId:m.tId, phase:'zonas', zone:m.zone, matchNum:3,
+            p1Id:null, p2Id:null,
+            p1Label:`Gan.${m.zone}1/${m.zone}4`, p2Label:`Gan.${m.zone}2/${m.zone}3`,
+            sets:[[null,null],[null,null],[null,null]], winner:null });
+        }
+        if (!m4) {
+          db.matches.push({ id:uid(), tId:m.tId, phase:'zonas', zone:m.zone, matchNum:4,
+            p1Id:null, p2Id:null,
+            p1Label:`Perd.${m.zone}1/${m.zone}4`, p2Label:`Perd.${m.zone}2/${m.zone}3`,
+            sets:[[null,null],[null,null],[null,null]], winner:null });
+        }
+      }
+      // Always ensure m3/m4 have correct pair IDs derived from m1/m2 results
+      {
+        const zm2 = db.matches.filter(x=>x.tId===m.tId&&x.zone===m.zone&&x.phase==='zonas');
+        const rm1=zm2.find(x=>x.matchNum===1), rm2=zm2.find(x=>x.matchNum===2);
+        const rm3=zm2.find(x=>x.matchNum===3), rm4=zm2.find(x=>x.matchNum===4);
+        if (rm1?.winner && rm2?.winner) {
+          const wM1=rm1.winner==='p1'?rm1.p1Id:rm1.p2Id, lM1=rm1.winner==='p1'?rm1.p2Id:rm1.p1Id;
+          const wM2=rm2.winner==='p1'?rm2.p1Id:rm2.p2Id, lM2=rm2.winner==='p1'?rm2.p2Id:rm2.p1Id;
+          if(rm3){if(!rm3.p1Id)rm3.p1Id=wM1; if(!rm3.p2Id)rm3.p2Id=wM2; rm3.p1Label=null; rm3.p2Label=null;}
+          if(rm4){if(!rm4.p1Id)rm4.p1Id=lM1; if(!rm4.p2Id)rm4.p2Id=lM2; rm4.p1Label=null; rm4.p2Label=null;}
+        }
+      }
+    }
+  }
+
+  saveDB();
+  clearTimeout(window._rt);
+  window._rt = setTimeout(render, 400);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  ADMIN – BRACKET (knockout from zone winners)
+// ═══════════════════════════════════════════════════════════════════
+const BRACKET_ORDER = ['16avos','8avos','cuartos','semis','final'];
+const BRACKET_NAMES = {'16avos':'16avos de Final','8avos':'8vos de Final','cuartos':'Cuartos de Final','semis':'Semifinales','final':'Final'};
+
+// ── Visual bracket helpers ───────────────────────────────────────
+function bvRow(m, side) {
+  const seed  = m[side+'Seed'] || '';
+  const pairObj = m[side+'Id'] ? db.pairs.find(p=>p.id===m[side+'Id']) : null;
+  const label = m[side+'Label'] || (pairObj ? pairLabel(pairObj) : '—');
+  const won   = m.winner === side;
+  const lost  = m.winner && !won;
+  const isBye = label === 'BYE';
+  const scores = (m.sets||[]).filter(([a,b])=>a!=null&&a!==''&&b!=null&&b!=='').map(([a,b])=>side==='p1'?a:b);
+  return `<div style="display:flex;align-items:center;gap:5px;padding:7px 10px;background:${won?'#f0fdf4':'white'};border-bottom:${side==='p1'?'1px solid #f3f4f6':'none'};">
+    ${seed ? `<span style="font-size:10px;font-weight:700;color:#9ca3af;min-width:24px;flex-shrink:0;">${seed}</span>` : ''}
+    <span style="flex:1;font-size:12px;font-weight:${won?700:400};color:${isBye?'#d1d5db':won?'#166534':lost?'#9ca3af':'#374151'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</span>
+    ${won?`<span style="color:#16a34a;font-size:11px;flex-shrink:0;">✓</span>`:''}
+    <div style="display:flex;gap:2px;flex-shrink:0;">${scores.map(s=>`<span style="font-size:12px;font-weight:${won?700:400};color:${won?'#166534':'#9ca3af'};min-width:14px;text-align:center;">${s}</span>`).join('')}</div>
+  </div>`;
+}
+
+function renderBracketVisual(t, bm, unlockedPhases, readOnly) {
+  const bi          = t.bracketInfo || {};
+  const byePairs    = bi.byePairs   || [];
+  const previaPhase = bi.previaPhase;
+  const bSize       = bi.bSize;
+
+  const bracketMatches = bm.filter(m => BRACKET_ORDER.includes(m.phase));
+  if (!bracketMatches.length && !bSize) return '';
+
+  // Determine which phases we expect (previa onwards)
+  const phMap        = BRACKET_PHASE_MAP[bSize] || BRACKET_PHASE_MAP[8];
+  const startPhase   = phMap ? phMap.prev : (bracketMatches.length ? bracketMatches.sort((a,b)=>BRACKET_ORDER.indexOf(a.phase)-BRACKET_ORDER.indexOf(b.phase))[0].phase : 'cuartos');
+  const startIdx     = BRACKET_ORDER.indexOf(startPhase);
+  const expectedPhs  = BRACKET_ORDER.slice(startIdx < 0 ? 0 : startIdx); // e.g. ['8avos','cuartos','semis','final']
+
+  // Build slot arrays for every expected phase
+  const rounds = [];
+  expectedPhs.forEach(ph => {
+    const matches = bracketMatches.filter(m => m.phase === ph).sort((a,b) => a.matchNum - b.matchNum);
+    if (matches.length > 0) {
+      if (ph === previaPhase && byePairs.length === 2) {
+        rounds.push({ phase: ph, slots: [
+          { type:'bye',   data: byePairs[0] },
+          ...matches.map(m => ({ type:'match', data: m })),
+          { type:'bye',   data: byePairs[1] },
+        ]});
+      } else {
+        rounds.push({ phase: ph, slots: matches.map(m => ({ type:'match', data: m })) });
+      }
+    } else {
+      // Future phase – TBD placeholders: half the previous round's slot count
+      const prevLen = rounds.length > 0 ? rounds[rounds.length-1].slots.length : 2;
+      const nTbd    = Math.max(1, Math.round(prevLen / 2));
+      // If this is the main phase and we have 2 byes, place them in first/last slots
+      const isMain  = ph === bi.mainPhase;
+      const slots   = Array.from({length: nTbd}, (_, i) => {
+        if (isMain && byePairs.length === 2 && i === 0)
+          return { type:'tbd-bye', bye: byePairs[0], byeSide:'p1' };
+        if (isMain && byePairs.length === 2 && i === nTbd - 1)
+          return { type:'tbd-bye', bye: byePairs[1], byeSide:'p2' };
+        return { type:'tbd' };
+      });
+      rounds.push({ phase: ph, slots });
+    }
+    // Stop expanding after we reach 1 slot (the final)
+    if (rounds[rounds.length-1].slots.length === 1 && ph !== expectedPhs[0]) return;
+  });
+
+  // Remove trailing TBD-only rounds beyond 'final'
+  while (rounds.length > 1 && rounds[rounds.length-1].slots.every(s=>s.type==='tbd') && rounds[rounds.length-1].phase === 'final') {
+    // keep final even if TBD
+    break;
+  }
+
+  const SLOT_H   = 110;
+  const maxSlots = Math.max(...rounds.map(r => r.slots.length));
+  const TOTAL_H  = maxSlots * SLOT_H;
+  const COL_W    = 268;
+  const CONN_W   = 32;
+  const HDR_H    = 32;
+
+  let html = `<div style="display:flex;overflow-x:auto;padding:0 0 16px 0;gap:0;min-height:${TOTAL_H+HDR_H+20}px;">`;
+
+  rounds.forEach(({ phase, slots }, ri) => {
+    const isLastReal  = ri === rounds.filter(r=>r.slots.some(s=>s.type==='match'||s.type==='bye')).length - 1;
+    const isLocked    = !isLastReal && !(unlockedPhases||[]).includes(phase);
+    const itemH       = TOTAL_H / slots.length;
+
+    html += `<div style="flex:0 0 auto;width:${COL_W}px;display:flex;flex-direction:column;">`;
+
+    // Phase header label
+    html += `<div style="height:${HDR_H}px;display:flex;align-items:center;gap:5px;padding:0 2px;">
+      <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;color:${PHASE_COLORS[phase]||'#6b7280'};">${BRACKET_NAMES[phase]||phase}</span>
+      ${!isLastReal && slots.some(s=>s.type==='match')?`<button onclick="toggleBracketPhaseLock('${t.id}','${phase}')" title="${isLocked?'Desbloquear':'Bloquear'}" style="font-size:12px;opacity:0.5;padding:0;background:none;border:none;cursor:pointer;">${isLocked?'🔒':'🔓'}</button>`:''}
+    </div>`;
+
+    // Slots
+    slots.forEach(slot => {
+      if (slot.type === 'match') {
+        const m = slot.data;
+        const isByeMatch = m.p2Label === 'BYE';
+        const canEnter   = !readOnly && !isLocked && !isByeMatch && m.p1Label && m.p2Label;
+        html += `<div style="height:${itemH}px;display:flex;align-items:center;padding:3px 6px 3px 2px;box-sizing:border-box;">
+          <div onclick="${canEnter?`openScoreModal('${m.id}',true)`:''}" style="width:100%;border-radius:12px;overflow:hidden;border:1.5px solid ${m.winner?'#c6f6d5':'#e5e7eb'};background:white;box-shadow:0 1px 3px rgba(0,0,0,0.07);${canEnter?'cursor:pointer;':''}">
+            ${bvRow(m,'p1')}
+            ${bvRow(m,'p2')}
+            ${m.matchDay||m.matchTime?`<div style="padding:2px 10px;font-size:10px;color:#9ca3af;border-top:1px solid #f3f4f6;background:#fafafa;">${[m.matchDay,m.matchTime].filter(Boolean).join(' · ')}</div>`:''}
+          </div>
+        </div>`;
+      } else if (slot.type === 'bye') {
+        const c = slot.data;
+        html += `<div style="height:${itemH}px;display:flex;align-items:center;padding:3px 6px 3px 2px;box-sizing:border-box;">
+          <div style="width:100%;border-radius:12px;border:2px solid #1A2500;background:#1A2500;padding:9px 10px;box-sizing:border-box;">
+            <div style="display:flex;align-items:center;gap:5px;">
+              <span style="font-size:10px;font-weight:700;color:#B8FF00;min-width:26px;flex-shrink:0;">${c.seed||''}</span>
+              <span style="flex:1;font-size:12px;font-weight:700;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.label||''}</span>
+              <span style="font-size:9px;font-weight:700;color:#78C832;background:#2d4000;padding:1px 5px;border-radius:9px;flex-shrink:0;">BYE</span>
+            </div>
+          </div>
+        </div>`;
+      } else if (slot.type === 'tbd-bye') {
+        // One team is already known (bye), the other is TBD
+        const c    = slot.bye;
+        const isP1 = slot.byeSide === 'p1';
+        const byeRow = `<div style="display:flex;align-items:center;gap:5px;padding:7px 10px;background:#f0fdf4;${isP1?'border-bottom:1px solid #d1fae5;':''}">
+          <span style="font-size:10px;font-weight:700;color:#15803d;min-width:26px;flex-shrink:0;">${c.seed||''}</span>
+          <span style="flex:1;font-size:12px;font-weight:700;color:#166534;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.label||''}</span>
+          <span style="font-size:9px;font-weight:700;color:#78C832;background:#1A2500;padding:1px 5px;border-radius:9px;flex-shrink:0;">BYE ✓</span>
+        </div>`;
+        const tbdRow = `<div style="display:flex;align-items:center;padding:7px 10px;${!isP1?'border-bottom:1px solid #f3f4f6;':''}">
+          <span style="font-size:12px;color:#d1d5db;font-style:italic;">Por definir</span>
+        </div>`;
+        html += `<div style="height:${itemH}px;display:flex;align-items:center;padding:3px 6px 3px 2px;box-sizing:border-box;">
+          <div style="width:100%;border-radius:12px;overflow:hidden;border:1.5px solid #d1fae5;background:white;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+            ${isP1 ? byeRow + tbdRow : tbdRow + byeRow}
+          </div>
+        </div>`;
+      } else {
+        // TBD placeholder
+        html += `<div style="height:${itemH}px;display:flex;align-items:center;padding:3px 6px 3px 2px;box-sizing:border-box;">
+          <div style="width:100%;border-radius:12px;border:1.5px dashed #e5e7eb;background:#f9fafb;min-height:52px;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:11px;color:#d1d5db;font-weight:500;">Por definir</span>
+          </div>
+        </div>`;
+      }
+    });
+
+    html += `</div>`;
+
+    // Connector SVG between rounds (only when ratio is exactly 2:1)
+    if (ri < rounds.length - 1) {
+      const nextLen = rounds[ri+1].slots.length;
+      const canConn = slots.length === nextLen * 2;
+      html += `<div style="flex:0 0 auto;width:${CONN_W}px;">`;
+      html += `<div style="height:${HDR_H}px;"></div>`;
+      if (canConn) {
+        html += `<svg width="${CONN_W}" height="${TOTAL_H}" style="display:block;">`;
+        for (let g = 0; g < nextLen; g++) {
+          const y1   = (g*2 + 0.5) * itemH;
+          const y2   = (g*2 + 1.5) * itemH;
+          const yMid = (y1 + y2) / 2;
+          const cx   = CONN_W * 0.55;
+          html += `<line x1="0" y1="${y1}" x2="${cx}" y2="${y1}" stroke="#d1d5db" stroke-width="1.5"/>
+<line x1="${cx}" y1="${y1}" x2="${cx}" y2="${y2}" stroke="#d1d5db" stroke-width="1.5"/>
+<line x1="0" y1="${y2}" x2="${cx}" y2="${y2}" stroke="#d1d5db" stroke-width="1.5"/>
+<line x1="${cx}" y1="${yMid}" x2="${CONN_W}" y2="${yMid}" stroke="#d1d5db" stroke-width="1.5"/>`;
+        }
+        html += `</svg>`;
+      } else {
+        html += `<div style="height:${TOTAL_H}px;"></div>`;
+      }
+      html += `</div>`;
+    }
+  });
+
+  html += `</div>`;
+  return html;
+}
+
+function viewAdminBracket() {
+  const t = db.tournaments.find(t=>t.id===activeTId); if (!t) return '';
+  const zones = getZones(t.id);
+  const bm = db.matches.filter(m=>m.tId===t.id && m.phase!=='zonas');
+
+  // Collect zone classifieds: top 2 from zones-of-3, top 3 from zones-of-4
+  const classif = [];
+  zones.forEach(zone => {
+    const ms = zoneMatches(t.id, zone.letter);
+    const stand = standingsForZone(zone.pairs, ms);
+    const qualifyN = zone.pairs.length === 4 ? 3 : 2;
+    if (stand[0]) classif.push({ rank:1, zone:zone.letter, pair:stand[0].pair });
+    if (stand[1]) classif.push({ rank:2, zone:zone.letter, pair:stand[1].pair });
+    if (qualifyN >= 3 && stand[2]) classif.push({ rank:3, zone:zone.letter, pair:stand[2].pair });
+  });
+
+  // Bracket state analysis
+  const bmPhases = BRACKET_ORDER.filter(ph=>bm.some(m=>m.phase===ph));
+  const currentPhase = bmPhases.length > 0 ? bmPhases[bmPhases.length-1] : null;
+  const currentMatches = currentPhase ? bm.filter(m=>m.phase===currentPhase).sort((a,b)=>a.matchNum-b.matchNum) : [];
+  const allCurrentDone = currentMatches.length > 0 && currentMatches.every(m=>m.winner);
+  const nextPhaseIdx = currentPhase ? BRACKET_ORDER.indexOf(currentPhase)+1 : -1;
+  const nextPhase = nextPhaseIdx >= 0 && nextPhaseIdx < BRACKET_ORDER.length ? BRACKET_ORDER[nextPhaseIdx] : null;
+  const isFinal = currentPhase === 'final';
+  const champion = isFinal && allCurrentDone ? (currentMatches[0].winner==='p1'?currentMatches[0].p1Label:currentMatches[0].p2Label) : null;
+  const unlockedPhases = t.bracketUnlockedPhases || [];
+
+  return `
+    <div>
+      ${adminSubHeader(t)}
+
+      <!-- Classified pairs -->
+      ${classif.length > 0 ? (() => {
+        // Compute seeding & bye info for display
+        const _firsts  = classif.filter(c=>c.rank===1);
+        const _seconds = classif.filter(c=>c.rank===2);
+        const _thirds  = classif.filter(c=>c.rank===3);
+        const _seeded  = [..._firsts, ..._seconds, ..._thirds];
+        const _n       = _seeded.length;
+        const _bSize   = nextPow2(_n);
+        const _nByes   = _bSize - _n;
+        const _phMap   = BRACKET_PHASE_MAP[_bSize] || BRACKET_PHASE_MAP[32];
+        const _byeIds  = new Set(_seeded.slice(0, _nByes).map(c=>c.pair.id));
+        const _previaName = BRACKET_NAMES[_phMap.prev] || _phMap.prev;
+        const _mainName   = BRACKET_NAMES[_phMap.main] || _phMap.main;
+        return `
+        <div class="bg-white rounded-2xl border border-gray-100 p-5 mb-5 shadow-sm">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-bold text-gray-700 text-sm">Clasificadas de zonas (${classif.length})</h3>
+            ${classif.length >= 2 ? `<button onclick="${bmPhases.length === 0 ? 'genInitialBracket()' : "confirm('¿Regenerar bracket? Se borrarán todos los resultados del bracket actual.')&&genInitialBracket()"}" class="btn-primary px-4 py-2 rounded-lg text-sm font-bold">${bmPhases.length === 0 ? '⚡ Generar bracket' : '🔄 Regenerar bracket'}</button>` : ''}
+          </div>
+          ${_nByes > 0 ? `
+          <div class="text-xs mb-3 px-3 py-2 rounded-lg font-medium" style="background:#edfad0;color:#3d6600">
+            📋 Formato: ${_nByes} primer${_nByes>1?'as':'a'} pasan directo a <strong>${_mainName}</strong> · ${_n - _nByes} juegan la previa (${_previaName})
+          </div>` : ''}
+          <div class="grid sm:grid-cols-2 gap-2">
+            ${_seeded.map(c => {
+              const isBye = _byeIds.has(c.pair.id);
+              return `
+              <div class="flex items-center gap-2 px-3 py-2 rounded-lg" style="background:${isBye?'#1A2500':'#f5f5f5'}">
+                <span class="text-xs font-bold px-1.5 rounded" style="${isBye?'background:#2d4000;color:#B8FF00':'background:#e0e0e0;color:#555'}">${c.zone}${c.rank}</span>
+                <span class="text-sm flex-1 truncate" style="${isBye?'color:#B8FF00':'color:#444'}">${c.pair.p1.split(' ')[0]} / ${c.pair.p2.split(' ')[0]}</span>
+                ${isBye ? `<span class="text-xs font-bold flex-shrink-0" style="color:#78C832">BYE ✓</span>` : ''}
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      })() : `
+        <div class="text-center py-8 text-gray-600 text-sm mb-5">
+          Las clasificadas aparecerán aquí cuando se carguen los resultados de zonas.
+        </div>`}
+
+      <!-- Champion banner -->
+      ${champion ? `
+        <div class="rounded-2xl p-6 mb-5 text-center" style="background:#1A2500">
+          <div class="text-4xl mb-2">🏆</div>
+          <div class="text-xs font-bold uppercase tracking-widest mb-1" style="color:#78C832">¡Campeón!</div>
+          <div class="text-xl font-black" style="color:#B8FF00">${champion}</div>
+        </div>` : ''}
+
+      <!-- Visual bracket tree -->
+      ${bm.length > 0 ? `
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm font-bold text-gray-700">Bracket</span>
+          <button onclick="pdfBracket('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50">📄 PDF</button>
+        </div>
+        <div class="rounded-2xl border border-gray-100 shadow-sm" style="background:#fafafa;overflow-x:auto;">
+          <div style="padding:12px 8px 4px 12px;min-width:min-content;">
+            ${renderBracketVisual(t, bm, unlockedPhases)}
+          </div>
+
+          <!-- Per-match controls (time scheduling + score entry) -->
+          <div class="border-t border-gray-100 divide-y divide-gray-50">
+            ${bmPhases.map(ph => {
+              const phMatches = bm.filter(m=>m.phase===ph).sort((a,b)=>a.matchNum-b.matchNum);
+              const isLastPhase = ph === currentPhase;
+              const isLocked = !isLastPhase && !unlockedPhases.includes(ph);
+              return phMatches.filter(m => m.p2Label !== 'BYE').map((m,mi) => {
+                const canEnter = !isLocked && m.p1Label && m.p2Label;
+                return `
+                <div class="px-4 py-3 flex flex-wrap items-center gap-2" style="background:white;">
+                  <span class="text-xs font-bold" style="color:${PHASE_COLORS[ph]||'#6b7280'};min-width:80px;">${BRACKET_NAMES[ph]||ph} #${mi+1}</span>
+                  <select onchange="saveBracketMatchTime('${m.id}','day',this.value)"
+                    class="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none bg-white text-gray-700">
+                    <option value="">Día</option>
+                    ${['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'].map(d=>`<option value="${d}"${m.matchDay===d?' selected':''}>${d}</option>`).join('')}
+                  </select>
+                  <input type="time" value="${m.matchTime||''}"
+                    onchange="saveBracketMatchTime('${m.id}','time',this.value)"
+                    class="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none text-gray-700">
+                  ${canEnter ? `
+                  <button onclick="openScoreModal('${m.id}',true)"
+                    class="ml-auto px-3 py-1 rounded-lg text-xs font-bold"
+                    style="background:${m.winner?'#edfad0':'#f3f4f6'};color:${m.winner?'#3d6600':'#6b7280'};">
+                    ${m.winner?'✎ Editar':'⊕ Resultado'}
+                  </button>` : ''}
+                  <label class="cursor-pointer text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 ${canEnter?'':'ml-auto'}">
+                    <input type="file" accept="image/*" class="hidden" onchange="attachMatchPhoto('${m.id}',this)">
+                    ${m.photo?'🔄':'📷'}
+                  </label>
+                  ${m.photo?`<img src="${m.photo}" class="h-6 w-6 rounded object-cover cursor-pointer" onclick="openPhotoViewer('${m.id}')" title="Ver foto"><button onclick="removeMatchPhoto('${m.id}')" class="text-xs text-red-400">✕</button>`:''}
+                </div>`;
+              }).join('');
+            }).join('')}
+          </div>
+        </div>
+
+        ${allCurrentDone && nextPhase ? `
+        <div class="flex justify-center mt-5">
+          <button onclick="advanceBracket()" class="btn-primary px-6 py-2.5 rounded-xl font-bold text-sm">
+            ⚡ Generar ${BRACKET_NAMES[nextPhase]}
+          </button>
+        </div>` : ''}
+      ` : ''}
+    </div>`;
+}
+
+// ── Bracket seeding helpers ──────────────────────────────────────────
+function nextPow2(n) { let p=1; while(p<n) p*=2; return p; }
+function pairLabel(pair) { return `${pair.p1.split(' ')[0]}/${pair.p2.split(' ')[0]}`; }
+
+// Phase map keyed by bracketSize:
+// prev = previa phase (where non-seeded pairs play)
+// main = first main-round phase (where seeded bye pairs enter)
+const BRACKET_PHASE_MAP = {
+  2:  { prev:'final',   main:'final'   },
+  4:  { prev:'semis',   main:'final'   },
+  8:  { prev:'cuartos', main:'semis'   },
+  16: { prev:'8avos',   main:'cuartos' },
+  32: { prev:'16avos',  main:'8avos'   },
+};
+
+// FAP predefined bracket templates.
+// Key: `${nClassifiers}_${nThirds}` (nThirds = count of 3rd-place classifiers, i.e. zones of 4 pairs).
+// slots: bracket positions top→bottom ["rankZone"], e.g. "1A"=1st of zone A, "3B"=3rd of zone B.
+// byeIdx: indices into slots[] that skip the previa (get byes), stored in rank order
+//         (best bye first) so advanceBracket places them correctly via generateBracketSeedOrder.
+// Source: FAP Reglamento de Torneos – bracket draw tables (pp. 124-145).
+const FAP_BRACKET_TEMPLATES = {
+  // ── 4 classifiers (6 total pairs – 2 zones of 3) ──────────── nByes=0, semis ──
+  '4_0': { slots:['1A','2B','2A','1B'], byeIdx:[] },
+
+  // ── 5 classifiers (7 total pairs – 1 zone of 4 + 1 zone of 3) ─ nByes=3, semis ─
+  '5_1': { slots:['1A','3A','2B','2A','1B'], byeIdx:[0,3,4] },
+  // byes: 1A(rank1), 2A(rank2), 1B(rank3)  |  previa: 3A vs 2B → winner plays 1A
+
+  // ── 6 classifiers (9 total pairs – 3 zones of 3) ─────────── nByes=2, semis ──
+  '6_0': { slots:['1A','2B','2C','1C','2A','1B'], byeIdx:[0,5] },
+  // byes: 1A, 1B  |  previa (cuartos): 2B vs 2C, 1C vs 2A
+
+  // ── 8 classifiers – no thirds (12 total pairs – 4 zones of 3) ─ nByes=0, cuartos ─
+  '8_0': { slots:['1A','2B','2C','1D','1C','2D','2A','1B'], byeIdx:[] },
+
+  // ── 8 classifiers – 2 thirds (11 total pairs – 2 zones of 4 + 1 zone of 3) ─ nByes=0 ─
+  '8_2': { slots:['1A','3B','2B','2C','1C','2A','3A','1B'], byeIdx:[] },
+
+  // ── 10 classifiers (14 total pairs – 2 zones of 4 + 2 zones of 3) ─ nByes=6, 8avos ─
+  '10_2': { slots:['1A','3A','2B','2C','1D','1C','2D','2A','3B','1B'],
+            byeIdx:[0,9,5,4,3,6] },
+  // byes rank order: 1A,1B,1C,1D,2C,2D  |  previa(8avos): 3A vs 2B, 2A vs 3B
+
+  // ── 14 classifiers (20 total pairs – 2 zones of 4 + 4 zones of 3) ─ nByes=2, 8avos ─
+  '14_2': { slots:['1A','2C','2F','1E','2B','3A','1D','1C','3B','2A','1F','2E','2D','1B'],
+             byeIdx:[0,13] },
+  // byes: 1A, 1B  |  previa(8avos): 2C/2F, 1E/2B, 3A/1D, 1C/3B, 2A/1F, 2E/2D
+};
+
+// Standard tournament bracket seeding order for n slots (top-to-bottom).
+// Ensures seeds 1 and 2 only meet in the final, 3 and 4 only in semis, etc.
+// E.g. n=8 → [1,8,5,4,3,6,7,2]
+function generateBracketSeedOrder(n) {
+  if (n <= 1) return [1];
+  if (n === 2) return [1, 2];
+  const half = generateBracketSeedOrder(n / 2);
+  const result = [];
+  for (let i = 0; i < half.length; i++) {
+    const s = half[i];
+    if (i % 2 === 0) { result.push(s, n + 1 - s); }   // even index: lower seed first
+    else             { result.push(n + 1 - s, s); }    // odd index:  higher seed first (reversed)
+  }
+  return result;
+}
+
+function genInitialBracket() {
+  try {
+  const t = db.tournaments.find(t=>t.id===activeTId);
+  const zones = getZones(t.id); // sorted A→Z
+
+  // Build classifMap: { zoneLetter: { rank: { pair, zone, rank } } }
+  const classifMap = {};
+  zones.forEach(zone => {
+    const ms = zoneMatches(t.id, zone.letter);
+    const stand = standingsForZone(zone.pairs, ms);
+    const qualN = zone.pairs.length === 4 ? 3 : 2;
+    classifMap[zone.letter] = {};
+    for (let r = 0; r < qualN; r++) {
+      if (stand[r]) classifMap[zone.letter][r + 1] = { pair: stand[r].pair, zone: zone.letter, rank: r + 1 };
+    }
+  });
+
+  // Build ordered classif list: 1sts A→Z, 2nds A→Z, 3rds A→Z
+  const classif = [];
+  [1, 2, 3].forEach(rank => {
+    zones.forEach(z => {
+      const c = classifMap[z.letter] && classifMap[z.letter][rank];
+      if (c) classif.push(c);
+    });
+  });
+
+  if (classif.length < 2) { alert('Necesitás al menos 2 parejas clasificadas'); return; }
+
+  db.matches = db.matches.filter(m => !(m.tId === t.id && m.phase !== 'zonas'));
+
+  const n        = classif.length;
+  const bSize    = nextPow2(n);
+  const nByes    = bSize - n;
+  const phMap    = BRACKET_PHASE_MAP[bSize] || BRACKET_PHASE_MAP[32];
+  const firstPhase = phMap.prev;
+  const mainSlots  = bSize / 2;
+  const seedLabel  = c => `${c.zone}${c.rank}`;
+  const nThirds    = classif.filter(c => c.rank === 3).length;
+  const tplKey     = `${n}_${nThirds}`;
+  const fapTpl     = FAP_BRACKET_TEMPLATES[tplKey];
+  let mn = 0;
+
+  if (fapTpl) {
+    // ── FAP predefined bracket ──────────────────────────────────────────────
+    // Build lookup "1A" → classif entry
+    const bySlot = {};
+    classif.forEach(c => { bySlot[`${c.rank}${c.zone}`] = c; });
+    const slots = fapTpl.slots.map(s => bySlot[s] || null);
+    const byeSet = new Set(fapTpl.byeIdx);
+
+    // byePairs in rank order (byeIdx order) for advanceBracket slot placement
+    const orderedByePairs = fapTpl.byeIdx
+      .map(i => slots[i]).filter(Boolean)
+      .map(c => ({ id:c.pair.id, label:pairLabel(c.pair), seed:seedLabel(c) }));
+
+    t.bracketInfo = {
+      previaPhase: nByes > 0 ? firstPhase : null,
+      mainPhase:   phMap.main,
+      bSize, mainSlots,
+      byePairs: orderedByePairs,
+    };
+
+    // Create previa matches in FAP order: adjacent non-bye slots pair up
+    const previaSlots = slots.filter((_, i) => !byeSet.has(i));
+    for (let i = 0; i + 1 < previaSlots.length; i += 2) {
+      const a = previaSlots[i], b = previaSlots[i + 1];
+      if (!a || !b) continue;
+      mn++;
+      db.matches.push({ id:uid(), tId:t.id, phase:firstPhase, zone:null, matchNum:mn,
+        p1Id:a.pair.id, p2Id:b.pair.id,
+        p1Label:pairLabel(a.pair), p2Label:pairLabel(b.pair),
+        p1Seed:seedLabel(a), p2Seed:seedLabel(b),
+        sets:[[null,null],[null,null],[null,null]], winner:null });
+    }
+
+  } else {
+    // ── Fallback: seeded bracket (non-FAP size) ─────────────────────────────
+    const seeded = classif;
+    const byeSeeds    = seeded.slice(0, nByes);
+    const previaPairs = seeded.slice(nByes);
+    const nP = previaPairs.length;
+
+    // Reorder bye seeds using standard bracket-position order
+    let orderedByePairs = [];
+    if (nByes > 0) {
+      const so = generateBracketSeedOrder(mainSlots);
+      for (const rank of so) {
+        if (rank <= nByes) {
+          const c = byeSeeds[rank - 1];
+          orderedByePairs.push({ id:c.pair.id, label:pairLabel(c.pair), seed:seedLabel(c) });
+        }
+      }
+    }
+    t.bracketInfo = {
+      previaPhase: nByes > 0 ? phMap.prev : null,
+      mainPhase:   phMap.main,
+      bSize, mainSlots,
+      byePairs: orderedByePairs,
+    };
+
+    if (nByes === 0) {
+      const so = generateBracketSeedOrder(nP);
+      for (let i = 0; i < nP - 1; i += 2) {
+        mn++;
+        const a = previaPairs[so[i] - 1], b = previaPairs[so[i + 1] - 1];
+        db.matches.push({ id:uid(), tId:t.id, phase:firstPhase, zone:null, matchNum:mn,
+          p1Id:a.pair.id, p2Id:b.pair.id,
+          p1Label:pairLabel(a.pair), p2Label:pairLabel(b.pair),
+          p1Seed:seedLabel(a), p2Seed:seedLabel(b),
+          sets:[[null,null],[null,null],[null,null]], winner:null });
+      }
+    } else {
+      for (let i = 0; i < Math.floor(nP / 2); i++) {
+        mn++;
+        const a = previaPairs[i], b = previaPairs[nP - 1 - i];
+        db.matches.push({ id:uid(), tId:t.id, phase:firstPhase, zone:null, matchNum:mn,
+          p1Id:a.pair.id, p2Id:b.pair.id,
+          p1Label:pairLabel(a.pair), p2Label:pairLabel(b.pair),
+          p1Seed:seedLabel(a), p2Seed:seedLabel(b),
+          sets:[[null,null],[null,null],[null,null]], winner:null });
+      }
+      if (nP % 2 === 1) {
+        mn++;
+        const mid = previaPairs[Math.floor(nP / 2)];
+        db.matches.push({ id:uid(), tId:t.id, phase:firstPhase, zone:null, matchNum:mn,
+          p1Id:mid.pair.id, p2Id:null,
+          p1Label:pairLabel(mid.pair), p2Label:'BYE',
+          p1Seed:seedLabel(mid), p2Seed:null,
+          sets:[[null,null],[null,null],[null,null]], winner:'p1' });
+      }
+    }
+  }
+
+  saveDB(); render();
+  } catch(e) { alert('Error generando bracket: ' + e.message + '\n' + e.stack); }
+}
+
+function advanceBracket() {
+  const t = db.tournaments.find(t=>t.id===activeTId);
+  const bm = db.matches.filter(m=>m.tId===t.id && m.phase!=='zonas');
+  const bmPhases = BRACKET_ORDER.filter(ph=>bm.some(m=>m.phase===ph));
+  if (bmPhases.length === 0) { genInitialBracket(); return; }
+
+  const currentPhase = bmPhases[bmPhases.length-1];
+  const currentMatches = bm.filter(m=>m.phase===currentPhase).sort((a,b)=>a.matchNum-b.matchNum);
+
+  if (!currentMatches.every(m=>m.winner)) {
+    alert('Completá todos los resultados de la ronda actual antes de avanzar.');
+    return;
+  }
+  if (currentPhase === 'final') { alert('¡El torneo ya tiene campeón!'); return; }
+
+  const nextPhase = BRACKET_ORDER[BRACKET_ORDER.indexOf(currentPhase)+1];
+  db.matches = db.matches.filter(m=>!(m.tId===t.id && m.phase===nextPhase));
+
+  const winners = currentMatches.map(m=>({
+    label: m.winner==='p1' ? m.p1Label : m.p2Label,
+    id:    m.winner==='p1' ? m.p1Id   : m.p2Id,
+    seed:  m.winner==='p1' ? m.p1Seed : m.p2Seed,
+  }));
+
+  const bi = t.bracketInfo || {};
+  let mn = 0;
+
+  // Previa → main: build main-phase bracket using standard slot-array approach.
+  // byePairs are already stored in bracket-position order (top→bottom).
+  // Previa winners (in matchNum order) fill the remaining slots determined by
+  // the standard bracket seed order for mainSlots positions.
+  if (bi.previaPhase && currentPhase === bi.previaPhase && bi.byePairs && bi.byePairs.length > 0) {
+    const orderedByePairs = bi.byePairs; // already in bracket-position order
+    const nByes      = orderedByePairs.length;
+    const mainSlots  = bi.mainSlots || (bi.bSize / 2);
+    const seedOrder  = generateBracketSeedOrder(mainSlots);
+
+    // Build slot array: for each slot, assign a bye or previa winner in order
+    let byeIdx = 0, prevIdx = 0;
+    const slots = [];
+    for (const rank of seedOrder) {
+      if (rank <= nByes) {
+        slots.push(orderedByePairs[byeIdx++]);
+      } else {
+        const w = winners[prevIdx++] || { id:null, label:'BYE', seed:null };
+        slots.push(w);
+      }
+    }
+
+    // Generate matches from consecutive slot pairs
+    for (let i = 0; i < slots.length - 1; i += 2) {
+      mn++;
+      const a = slots[i], b = slots[i + 1];
+      const autoWin = a.id === null ? 'p2' : b.id === null ? 'p1' : null;
+      db.matches.push({ id:uid(), tId:t.id, phase:nextPhase, zone:null, matchNum:mn,
+        p1Id:a.id, p2Id:b.id, p1Label:a.label, p2Label:b.label,
+        p1Seed:a.seed||null, p2Seed:b.seed||null,
+        sets:[[null,null],[null,null],[null,null]], winner:autoWin });
+    }
+
+  } else {
+    // Subsequent rounds: sequential pairing — adjacent match winners play each other.
+    // This is correct when the bracket was built with standard slot-array seeding
+    // (nByes=0 case) or after the previa→main slot-array transition.
+    // Adjacent match pairs form the correct bracket sections so top seeds stay
+    // in opposite halves and can only meet in the final.
+    const nW = winners.length;
+    for (let i = 0; i < nW - 1; i += 2) {
+      mn++;
+      const a = winners[i], b = winners[i + 1];
+      const autoWin = a.id === null ? 'p2' : b.id === null ? 'p1' : null;
+      db.matches.push({ id:uid(), tId:t.id, phase:nextPhase, zone:null, matchNum:mn,
+        p1Id:a.id, p2Id:b.id, p1Label:a.label, p2Label:b.label,
+        p1Seed:a.seed||null, p2Seed:b.seed||null,
+        sets:[[null,null],[null,null],[null,null]], winner:autoWin });
+    }
+    // Odd winner (power-of-2 brackets avoid this, but just in case)
+    if (nW % 2 === 1) {
+      mn++;
+      const mid = winners[Math.floor(nW / 2)];
+      db.matches.push({ id:uid(), tId:t.id, phase:nextPhase, zone:null, matchNum:mn,
+        p1Id:mid.id, p2Id:null, p1Label:mid.label, p2Label:'BYE',
+        p1Seed:mid.seed||null, p2Seed:null,
+        sets:[[null,null],[null,null],[null,null]], winner:'p1' });
+    }
+  }
+
+  saveDB(); render();
+}
+
+function saveBracketMatchTime(matchId, field, value) {
+  const m = db.matches.find(x=>x.id===matchId); if (!m) return;
+  if (field === 'day')  m.matchDay  = value || null;
+  if (field === 'time') m.matchTime = value || null;
+  saveDB();
+  // Re-render only the bracket card label (no full render needed for time save)
+}
+
+function setBracketScore(matchId, setIdx, side, value) {
+  const m = db.matches.find(x=>x.id===matchId); if (!m) return;
+  m.sets[setIdx][side] = value===''?null:parseInt(value);
+  let p1s=0, p2s=0;
+  m.sets.forEach(([a,b]) => { if(a!==null&&b!==null){if(+a>+b)p1s++;else if(+b>+a)p2s++;} });
+  m.winner = p1s>=2?'p1':p2s>=2?'p2':null;
+  saveDB();
+  clearTimeout(window._rt);
+  window._rt = setTimeout(render, 400);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════════════
+// Returns array of unavailable days, handling both old (string) and new (array) format
+function getPairUnavailDays(pair) {
+  if (pair.unavailableDays && pair.unavailableDays.length > 0) return pair.unavailableDays;
+  if (pair.unavailableDay) return [pair.unavailableDay];
+  return [];
+}
+
+// Returns how many unique play days a tournament has
+function getTournamentUniqueDays(t) {
+  const days = t.playSlots ? t.playSlots.map(s=>s.day).filter(Boolean)
+                           : (t.playDays || []);
+  return [...new Set(days)];
+}
+
+function getZones(tId) {
+  const pairs = db.pairs.filter(p=>p.tId===tId && p.zone);
+  const letters = [...new Set(pairs.map(p=>p.zone))].sort();
+  return letters.map(letter => ({
+    letter,
+    pairs: pairs.filter(p=>p.zone===letter).sort((a,b)=>a.pos-b.pos)
+  }));
+}
+
+function zoneMatches(tId, zone) {
+  return db.matches.filter(m=>m.tId===tId && m.zone===zone && m.phase==='zonas');
+}
+
+// For zone-of-4: determine positions from bracket match outcomes (M3 winner=1st,
+// M3 loser=2nd, M4 winner=3rd, M4 loser=4th). Falls back to PG-based standings
+// for incomplete zones or zones-of-3.
+// Compute raw stats (pg, sg, sp, jg, jp) for each pair from match results
+function computeStats(pairs, matches) {
+  const st = {};
+  pairs.forEach(p => { st[p.id] = { pair:p, pg:0, pp:0, sg:0, sp:0, jg:0, jp:0 }; });
+  matches.forEach(m => {
+    if (!m.winner) return;
+    let sg1=0,sg2=0,jg1=0,jp1=0,jg2=0,jp2=0;
+    m.sets.forEach(([a,b]) => {
+      if (a===null||b===null||a===''||b==='') return;
+      a=+a; b=+b;
+      if (a>b) { sg1++; jg1+=a; jp1+=b; }
+      else if (b>a) { sg2++; jg2+=b; jp2+=a; }
+    });
+    if (st[m.p1Id]) { const s=st[m.p1Id]; if(m.winner==='p1')s.pg++;else s.pp++; s.sg+=sg1;s.sp+=sg2;s.jg+=jg1;s.jp+=jp1; }
+    if (st[m.p2Id]) { const s=st[m.p2Id]; if(m.winner==='p2')s.pg++;else s.pp++; s.sg+=sg2;s.sp+=sg1;s.jg+=jg2;s.jp+=jp2; }
+  });
+  return st;
+}
+
+// For zone-of-4: positions are determined by bracket outcomes (M3/M4), stats shown for info
+function standingsForZone(pairs, matches) {
+  if (pairs.length !== 4) return standings(pairs, matches);
+  const m1 = matches.find(m => m.matchNum === 1);
+  const m2 = matches.find(m => m.matchNum === 2);
+  const m3 = matches.find(m => m.matchNum === 3);
+  const m4 = matches.find(m => m.matchNum === 4);
+
+  // Derive who played in M3/M4 from M1/M2 results (robust even when m3.p1Id is null in DB)
+  let winM1=null, losM1=null, winM2=null, losM2=null;
+  if (m1?.winner) { winM1 = m1.winner==='p1'?m1.p1Id:m1.p2Id; losM1 = m1.winner==='p1'?m1.p2Id:m1.p1Id; }
+  if (m2?.winner) { winM2 = m2.winner==='p1'?m2.p1Id:m2.p2Id; losM2 = m2.winner==='p1'?m2.p2Id:m2.p1Id; }
+
+  // Enrich m3/m4 in-memory so computeStats counts all 4 matches correctly
+  if (m3 && winM1 && winM2) { if (!m3.p1Id) m3.p1Id = winM1; if (!m3.p2Id) m3.p2Id = winM2; }
+  if (m4 && losM1 && losM2) { if (!m4.p1Id) m4.p1Id = losM1; if (!m4.p2Id) m4.p2Id = losM2; }
+
+  // Compute actual stats for display (after enriching pair IDs)
+  const st = computeStats(pairs, matches);
+
+  if (m3?.winner && m4?.winner && winM1 && winM2 && losM1 && losM2) {
+    // 1st: M3 winner, 2nd: M3 loser, 3rd: M4 winner, 4th: M4 loser
+    // M3 is winM1 (p1) vs winM2 (p2); M4 is losM1 (p1) vs losM2 (p2)
+    const pos1 = m3.winner==='p1' ? winM1 : winM2;
+    const pos2 = m3.winner==='p1' ? winM2 : winM1;
+    const pos3 = m4.winner==='p1' ? losM1 : losM2;
+    const pos4 = m4.winner==='p1' ? losM2 : losM1;
+    const result = [pos1,pos2,pos3,pos4].map(id => st[id]||null).filter(Boolean);
+    pairs.forEach(p => { if (!result.find(r=>r.pair.id===p.id)) result.push(st[p.id]||{pair:p,pg:0,pp:0,sg:0,sp:0,jg:0,jp:0}); });
+    return result;
+  }
+  // Bracket not complete: fall back to PG-based order (with head-to-head)
+  return standings(pairs, matches);
+}
+
+function standings(pairs, matches) {
+  const st = computeStats(pairs, matches);
+  const list = Object.values(st);
+
+  // Head-to-head tiebreaker: when two pairs are tied on PG, the one who beat
+  // the other directly ranks higher.
+  function headToHead(a, b) {
+    const direct = matches.find(m =>
+      m.winner && ((m.p1Id===a.pair.id && m.p2Id===b.pair.id) || (m.p1Id===b.pair.id && m.p2Id===a.pair.id))
+    );
+    if (!direct) return 0;
+    if ((direct.p1Id===a.pair.id && direct.winner==='p1') || (direct.p2Id===a.pair.id && direct.winner==='p2')) return -1;
+    return 1;
+  }
+
+  return list.sort((a,b) => {
+    if (b.pg !== a.pg) return b.pg - a.pg;
+    // Tied on PG: 1) head-to-head, 2) set diff, 3) game diff
+    const h2h = headToHead(a, b);
+    if (h2h !== 0) return h2h;
+    if ((b.sg-b.sp) !== (a.sg-a.sp)) return (b.sg-b.sp) - (a.sg-a.sp);
+    return (b.jg-b.jp) - (a.jg-a.jp);
+  });
+}
+
+function addHours(timeStr, hours) {
+  const [h, m] = (timeStr || '20:00').split(':').map(Number);
+  const total = h * 60 + m + hours * 60;
+  return `${String(Math.floor(total/60)%24).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;
+}
+
+function getMatchTime(t, letter, matchIndex) {
+  let baseTime = null;
+  if (t.zoneAssignments && t.zoneAssignments[letter]) baseTime = t.zoneAssignments[letter].time || '20:00';
+  else {
+    const zi = letter.charCodeAt(0) - 65;
+    if (t.playSlots && t.playSlots[zi]) baseTime = t.playSlots[zi].time || '20:00';
+    else if (t.playTime) baseTime = t.playTime;
+  }
+  if (!baseTime) return null;
+  return addHours(baseTime, matchIndex);
+}
+
+function formatDay(d) {
+  if (!d) return '';
+  // ISO date format YYYY-MM-DD → "Sáb 15/09"
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return d; // backward compat: old format like "Lunes"
+  const date = new Date(d + 'T12:00:00');
+  const names = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  return `${names[date.getDay()]} ${m[3]}/${m[2]}`;
+}
+
+function getZoneSchedule(t, letter) {
+  // Randomized assignment (set by autoZones)
+  if (t.zoneAssignments && t.zoneAssignments[letter]) {
+    const slot = t.zoneAssignments[letter];
+    if (!slot.day) return null;
+    return `${formatDay(slot.day)} ${slot.time || '20:00'}`;
+  }
+  // Backward compat: sequential playSlots
+  const zi = letter.charCodeAt(0) - 65;
+  if (t.playSlots && t.playSlots.length > 0) {
+    const slot = t.playSlots[zi];
+    if (!slot || !slot.day) return null;
+    return `${formatDay(slot.day)} ${slot.time || '20:00'}`;
+  }
+  if (t.playDays && t.playDays.length > 0) {
+    return `${t.playDays[zi % t.playDays.length]} ${t.playTime || '20:00'}`;
+  }
+  return null;
+}
+
+function toggleForm(id) {
+  const el = document.getElementById(id);
+  el.classList.toggle('hidden');
+  // Init new-tournament day slots if empty
+  if (id === 'form-new-t' && !el.classList.contains('hidden')) {
+    const sc = document.getElementById('nt-slots');
+    if (sc && sc.querySelectorAll('.slot-row').length === 0) addDaySlot('nt-slots');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  GLOBAL STYLES
+// ═══════════════════════════════════════════════════════════════════
+const style = document.createElement('style');
+style.textContent = `
+  .field { width:100%; border:1px solid #e5e7eb; border-radius:.5rem; padding:.45rem .75rem; font-size:.875rem; outline:none; }
+  .field:focus { border-color:#B8FF00; box-shadow:0 0 0 3px #B8FF0033; }
+  .label { display:block; font-size:.75rem; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.25rem; }
+  .btn-primary { background:#B8FF00; color:#111111; border:none; cursor:pointer; transition:all .15s; font-weight:700; }
+  .btn-primary:hover { background:#CCFF33; }
+  .btn-primary:active { transform:scale(.97); }
+  .btn-sec { background:#f3f4f6; color:#374151; border:none; cursor:pointer; transition:all .15s; }
+  .btn-sec:hover { background:#e5e7eb; }
+  .chip-btn { padding:.3rem .75rem; border-radius:.5rem; font-size:.75rem; font-weight:600; background:#f3f4f6; color:#374151; border:none; cursor:pointer; transition:all .15s; }
+  .chip-btn:hover { background:#e5e7eb; }
+  .chip-alt { background:#edfad0; color:#3d6600; }
+  .chip-alt:hover { background:#ddf5aa; }
+  .chip-danger { background:#fef2f2; color:#dc2626; }
+  .chip-danger:hover { background:#fee2e2; }
+  .badge-green { padding:.2rem .65rem; border-radius:9999px; font-size:.7rem; font-weight:700; background:#edfad0; color:#3d6600; }
+  .badge-blue  { padding:.2rem .65rem; border-radius:9999px; font-size:.7rem; font-weight:700; background:#dbeafe; color:#1d4ed8; }
+  .badge-gray  { padding:.2rem .65rem; border-radius:9999px; font-size:.7rem; font-weight:700; background:#f3f4f6; color:#6b7280; }
+  .score-input { width:2.5rem; text-align:center; border:1px solid #e5e7eb; border-radius:.4rem; padding:.2rem; font-size:.8rem; outline:none; }
+  .score-input:focus { border-color:#B8FF00; box-shadow:0 0 0 2px #B8FF0033; }
+  .score-btn { width:40px;height:40px;border-radius:50%;background:#f1f5f9;border:none;cursor:pointer;font-size:22px;font-weight:700;color:#64748b;display:flex;align-items:center;justify-content:center;transition:all .1s;flex-shrink:0; }
+  .score-btn:hover { background:#B8FF00;color:#111; }
+  .score-btn:active { transform:scale(.9); }
+  .score-val { font-size:36px;font-weight:900;color:#111;width:48px;text-align:center;line-height:1; }
+`;
+document.head.appendChild(style);
+
+// ═══════════════════════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════════════════════
+nav('home');
+
+// ═══════════════════════════════════════════════════════════════════
+//  SCORE MODAL
+// ═══════════════════════════════════════════════════════════════════
+const BRACKET_BO3_PHASES = ['cuartos','semis','final'];
+let scoreModal = { matchId:null, isBracket:false, isThirdSetRegular:false, sets:[[0,0],[0,0],[0,0]] };
+
+function openScoreModal(matchId, isBracket) {
+  const m = db.matches.find(x=>x.id===matchId); if (!m) return;
+  scoreModal.matchId = matchId;
+  scoreModal.isBracket = !!isBracket;
+  scoreModal.isThirdSetRegular = !!isBracket && BRACKET_BO3_PHASES.includes(m.phase);
+  scoreModal.sets = m.sets.map(([a,b]) => [a??0, b??0]);
+  // Update 3rd set label dynamically
+  const s3label = document.getElementById('sm-s3-label');
+  if (s3label) {
+    s3label.innerHTML = scoreModal.isThirdSetRegular
+      ? `<span class="text-xs font-bold text-gray-600">Set 3</span><div class="text-xs text-gray-500 leading-none">a 7</div>`
+      : `<span class="text-xs font-bold text-gray-600">S.TB</span><div class="text-xs text-gray-500 leading-none">a 11</div>`;
+  }
+  // Update shortcut buttons
+  const shortcuts = document.getElementById('sm-s3-shortcuts');
+  if (shortcuts) {
+    if (scoreModal.isThirdSetRegular) {
+      shortcuts.innerHTML = `
+        <span class="text-xs text-gray-600">Atajo:</span>
+        <button onclick="scoreModal.sets[2][0]=6;scoreModal.sets[2][1]=0;document.getElementById('sm-error').classList.add('hidden');refreshScoreModal()" class="text-xs px-2 py-0.5 rounded" style="background:#f3f4f6;color:#374151">6–0</button>
+        <button onclick="scoreModal.sets[2][0]=6;scoreModal.sets[2][1]=3;document.getElementById('sm-error').classList.add('hidden');refreshScoreModal()" class="text-xs px-2 py-0.5 rounded" style="background:#f3f4f6;color:#374151">6–3</button>
+        <button onclick="scoreModal.sets[2][0]=7;scoreModal.sets[2][1]=5;document.getElementById('sm-error').classList.add('hidden');refreshScoreModal()" class="text-xs px-2 py-0.5 rounded" style="background:#f3f4f6;color:#374151">7–5</button>
+        <button onclick="scoreModal.sets[2][0]=7;scoreModal.sets[2][1]=6;document.getElementById('sm-error').classList.add('hidden');refreshScoreModal()" class="text-xs px-2 py-0.5 rounded" style="background:#f3f4f6;color:#374151">7–6</button>`;
+    } else {
+      shortcuts.innerHTML = `
+        <span class="text-xs text-gray-600">Atajo:</span>
+        <button onclick="scoreModal.sets[2][0]=11;scoreModal.sets[2][1]=0;document.getElementById('sm-error').classList.add('hidden');refreshScoreModal()" class="text-xs px-2 py-0.5 rounded" style="background:#f3f4f6;color:#374151">11–0</button>
+        <button onclick="scoreModal.sets[2][0]=11;scoreModal.sets[2][1]=8;document.getElementById('sm-error').classList.add('hidden');refreshScoreModal()" class="text-xs px-2 py-0.5 rounded" style="background:#f3f4f6;color:#374151">11–8</button>
+        <button onclick="scoreModal.sets[2][0]=11;scoreModal.sets[2][1]=9;document.getElementById('sm-error').classList.add('hidden');refreshScoreModal()" class="text-xs px-2 py-0.5 rounded" style="background:#f3f4f6;color:#374151">11–9</button>
+        <button onclick="scoreModal.sets[2][0]=11;scoreModal.sets[2][1]=10;document.getElementById('sm-error').classList.add('hidden');refreshScoreModal()" class="text-xs px-2 py-0.5 rounded" style="background:#f3f4f6;color:#374151">11–10</button>`;
+    }
+  }
+
+  const allPairs = db.pairs.filter(p=>p.tId===m.tId);
+  const p1 = allPairs.find(p=>p.id===m.p1Id);
+  const p2 = allPairs.find(p=>p.id===m.p2Id);
+  const p1n = m.p1Label || (p1 ? `${p1.p1.split(' ')[0]}/${p1.p2.split(' ')[0]}` : '?');
+  const p2n = m.p2Label || (p2 ? `${p2.p1.split(' ')[0]}/${p2.p2.split(' ')[0]}` : '?');
+
+  document.getElementById('sm-p1').textContent = p1n;
+  document.getElementById('sm-p2').textContent = p2n;
+  document.getElementById('sm-phase').textContent =
+    m.phase==='zonas' ? `ZONA ${m.zone} · Partido ${m.matchNum}` : m.phase.toUpperCase();
+
+  document.getElementById('sm-winner').classList.add('hidden');
+  document.getElementById('sm-error').classList.add('hidden');
+  refreshScoreModal();
+  document.getElementById('score-modal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function adjScore(si, side, delta) {
+  const maxVal = si < 2 ? 7 : (scoreModal.isThirdSetRegular ? 7 : 11);
+  const v = (scoreModal.sets[si][side] ?? 0) + delta;
+  scoreModal.sets[si][side] = Math.max(0, Math.min(maxVal, v));
+  document.getElementById('sm-error').classList.add('hidden');
+  refreshScoreModal();
+}
+
+function validateScoreSets(sets, isThirdSetRegular) {
+  for (let si = 0; si < 3; si++) {
+    const [a, b] = sets[si];
+    if (a === 0 && b === 0) continue; // no jugado
+    if (si < 2 || isThirdSetRegular) {
+      // Set regular: 6-x (x≤4), 7-5, 7-6 (y al revés)
+      const ok = (a===6&&b<=4)||(b===6&&a<=4)||(a===7&&(b===5||b===6))||(b===7&&(a===5||a===6));
+      if (!ok) return `Set ${si+1}: ${a}-${b} no es válido. Scores posibles: 6-0 a 6-4, 7-5, 7-6.`;
+    } else {
+      // Super tiebreak: uno debe tener exactamente 11, el otro ≤10
+      const ok = (a===11&&b<=10)||(b===11&&a<=10);
+      if (!ok) return `Super TB: ${a}-${b} no es válido. Debe ser 11-x con x entre 0 y 10 (ej: 11-8 o 11-10).`;
+    }
+  }
+  return null;
+}
+
+function refreshScoreModal() {
+  // Update numbers only — winner is NOT shown while editing
+  [0,1,2].forEach(si => {
+    document.getElementById(`sm-s${si}-0`).textContent = scoreModal.sets[si][0] ?? 0;
+    document.getElementById(`sm-s${si}-1`).textContent = scoreModal.sets[si][1] ?? 0;
+  });
+}
+
+function saveScoreModal() {
+  const m = db.matches.find(x=>x.id===scoreModal.matchId); if (!m) return;
+  // Validate before saving
+  const err = validateScoreSets(scoreModal.sets, scoreModal.isThirdSetRegular);
+  if (err) {
+    const errEl = document.getElementById('sm-error');
+    errEl.textContent = '⚠️ ' + err;
+    errEl.classList.remove('hidden');
+    return;
+  }
+  // Convert 0-0 sets to null (unplayed)
+  m.sets = scoreModal.sets.map(([a,b]) => (a===0&&b===0) ? [null,null] : [a,b]);
+  // Recompute winner
+  let p1s=0, p2s=0;
+  m.sets.forEach(([a,b]) => {
+    if(a!==null&&b!==null){ if(+a>+b)p1s++; else if(+b>+a)p2s++; }
+  });
+  m.winner = p1s>=2?'p1':p2s>=2?'p2':null;
+  // Zone propagation after saving a result
+  if (m.phase==='zonas' && m.winner) {
+    const zm = db.matches.filter(x=>x.tId===m.tId&&x.zone===m.zone&&x.phase==='zonas').sort((a,b)=>a.matchNum-b.matchNum);
+    const m2=zm.find(x=>x.matchNum===2); const m3=zm.find(x=>x.matchNum===3); const m4=zm.find(x=>x.matchNum===4);
+    const zonePairs = db.pairs.filter(p=>p.tId===m.tId&&p.zone===m.zone&&!p.suplente);
+    const isZone4 = zonePairs.length === 4;
+    if (!isZone4) {
+      // 3-pair zone: match 1 → populate m2 and m3
+      if (m.matchNum===1) {
+        if(m2) m2.p1Id = m.winner==='p1'?m.p1Id:m.p2Id;
+        if(m3) m3.p1Id = m.winner==='p1'?m.p2Id:m.p1Id;
+      }
+    } else {
+      // 4-pair zone: auto-create m3/m4 if missing (old import data)
+      if (!m3) db.matches.push({id:uid(),tId:m.tId,phase:'zonas',zone:m.zone,matchNum:3,p1Id:null,p2Id:null,p1Label:`Gan.${m.zone}1/${m.zone}4`,p2Label:`Gan.${m.zone}2/${m.zone}3`,sets:[[null,null],[null,null],[null,null]],winner:null});
+      if (!m4) db.matches.push({id:uid(),tId:m.tId,phase:'zonas',zone:m.zone,matchNum:4,p1Id:null,p2Id:null,p1Label:`Perd.${m.zone}1/${m.zone}4`,p2Label:`Perd.${m.zone}2/${m.zone}3`,sets:[[null,null],[null,null],[null,null]],winner:null});
+      // Always ensure m3/m4 have correct pair IDs derived from m1/m2 results
+      {
+        const zm2=db.matches.filter(x=>x.tId===m.tId&&x.zone===m.zone&&x.phase==='zonas');
+        const rm1=zm2.find(x=>x.matchNum===1),rm2=zm2.find(x=>x.matchNum===2),rm3=zm2.find(x=>x.matchNum===3),rm4=zm2.find(x=>x.matchNum===4);
+        if(rm1?.winner && rm2?.winner){
+          const wM1=rm1.winner==='p1'?rm1.p1Id:rm1.p2Id, lM1=rm1.winner==='p1'?rm1.p2Id:rm1.p1Id;
+          const wM2=rm2.winner==='p1'?rm2.p1Id:rm2.p2Id, lM2=rm2.winner==='p1'?rm2.p2Id:rm2.p1Id;
+          if(rm3){if(!rm3.p1Id)rm3.p1Id=wM1; if(!rm3.p2Id)rm3.p2Id=wM2; rm3.p1Label=null; rm3.p2Label=null;}
+          if(rm4){if(!rm4.p1Id)rm4.p1Id=lM1; if(!rm4.p2Id)rm4.p2Id=lM2; rm4.p1Label=null; rm4.p2Label=null;}
+        }
+      }
+    }
+  }
+  saveDB();
+  // Show winner briefly before closing
+  const winEl = document.getElementById('sm-winner');
+  if (m.winner) {
+    const name = m.winner==='p1' ? document.getElementById('sm-p1').textContent
+                                 : document.getElementById('sm-p2').textContent;
+    winEl.textContent = `🏆 Ganó: ${name}`;
+    winEl.classList.remove('hidden');
+    setTimeout(() => { closeScoreModal(); render(); }, 900);
+  } else {
+    closeScoreModal(); render();
+  }
+}
+
+function closeScoreModal() {
+  document.getElementById('score-modal').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  LOCK / UNLOCK
+// ═══════════════════════════════════════════════════════════════════
+function toggleZoneLock(tId) {
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  if (t.zonesUnlocked) {
+    t.zonesUnlocked = false;
+  } else {
+    if (!confirm('⚠️ Desbloquear las zonas permite editar resultados aunque ya exista un bracket. ¿Continuar?')) return;
+    t.zonesUnlocked = true;
+  }
+  saveDB(); render();
+}
+
+function toggleBracketPhaseLock(tId, phase) {
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  t.bracketUnlockedPhases = t.bracketUnlockedPhases || [];
+  const idx = t.bracketUnlockedPhases.indexOf(phase);
+  if (idx >= 0) {
+    t.bracketUnlockedPhases.splice(idx, 1);
+  } else {
+    if (!confirm(`⚠️ Desbloquear ${BRACKET_NAMES[phase]||phase} permite editar esos resultados aunque haya rondas posteriores. ¿Continuar?`)) return;
+    t.bracketUnlockedPhases.push(phase);
+  }
+  saveDB(); render();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  EDIT PAIR NAMES
+// ═══════════════════════════════════════════════════════════════════
+let editPairId = null;
+function openEditPairModal(pairId) {
+  const p = db.pairs.find(x=>x.id===pairId); if (!p) return;
+  editPairId = pairId;
+  document.getElementById('ep-p1').value = p.p1;
+  document.getElementById('ep-p2').value = p.p2;
+  document.getElementById('edit-pair-modal').classList.remove('hidden');
+}
+function closeEditPairModal() {
+  document.getElementById('edit-pair-modal').classList.add('hidden');
+  editPairId = null;
+}
+function saveEditPair() {
+  const p = db.pairs.find(x=>x.id===editPairId); if (!p) return;
+  const p1 = document.getElementById('ep-p1').value.trim();
+  const p2 = document.getElementById('ep-p2').value.trim();
+  if (!p1 || !p2) { alert('Ingresá ambos nombres'); return; }
+  p.p1 = p1; p.p2 = p2;
+  const shortLabel = `${p1.split(' ')[0]}/${p2.split(' ')[0]}`;
+  // Update match labels that reference this pair
+  db.matches.forEach(m => {
+    if (m.p1Id === p.id) m.p1Label = shortLabel;
+    if (m.p2Id === p.id) m.p2Label = shortLabel;
+  });
+  // Update bracketInfo byePairs labels
+  db.tournaments.forEach(t => {
+    if (t.bracketInfo && t.bracketInfo.byePairs) {
+      t.bracketInfo.byePairs.forEach(bp => { if (bp.id === p.id) bp.label = shortLabel; });
+    }
+  });
+  saveDB(); closeEditPairModal(); render();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MATCH PHOTOS
+// ═══════════════════════════════════════════════════════════════════
+function attachMatchPhoto(matchId, input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const m = db.matches.find(x=>x.id===matchId); if (!m) return;
+    m.photo = e.target.result;
+    saveDB(); render();
+  };
+  reader.readAsDataURL(file);
+}
+function removeMatchPhoto(matchId) {
+  const m = db.matches.find(x=>x.id===matchId); if (!m) return;
+  m.photo = null; saveDB(); render();
+}
+let photoViewerMatchId = null;
+function openPhotoViewer(matchId) {
+  const m = db.matches.find(x=>x.id===matchId); if (!m || !m.photo) return;
+  photoViewerMatchId = matchId;
+  document.getElementById('photo-viewer-img').src = m.photo;
+  document.getElementById('photo-viewer').classList.remove('hidden');
+}
+function closePhotoViewer() {
+  document.getElementById('photo-viewer').classList.add('hidden');
+  document.getElementById('photo-viewer-img').src = '';
+  photoViewerMatchId = null;
+}
+function downloadViewerPhoto() {
+  if (!photoViewerMatchId) return;
+  const m = db.matches.find(x=>x.id===photoViewerMatchId); if (!m || !m.photo) return;
+  const a = document.createElement('a');
+  a.href = m.photo;
+  a.download = `partido.jpg`;
+  a.click();
+}
+</script>
+
+<!-- ══ SCORE MODAL ══════════════════════════════════════════════════════════ -->
+<div id="score-modal" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center" style="background:rgba(0,0,0,0.65)">
+  <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-sm mx-0 sm:mx-4 overflow-hidden" onclick="event.stopPropagation()">
+    <div class="px-5 py-3 flex items-center justify-between" style="background:#1A2500">
+      <span class="text-xs font-bold uppercase tracking-wider" style="color:#78C832" id="sm-phase"></span>
+      <button onclick="closeScoreModal()" class="text-gray-500 hover:text-white text-xl leading-none">✕</button>
+    </div>
+    <div class="p-5">
+      <!-- Teams -->
+      <div class="flex items-center justify-between mb-5">
+        <span id="sm-p1" class="flex-1 font-bold text-gray-800 text-sm truncate"></span>
+        <span class="text-xs text-gray-500 mx-2 flex-shrink-0">vs</span>
+        <span id="sm-p2" class="flex-1 font-bold text-gray-800 text-sm truncate text-right"></span>
+      </div>
+      <!-- Set rows -->
+      <div class="space-y-4">
+        <!-- Set 1 -->
+        <div class="flex items-center gap-1">
+          <span class="text-xs font-bold text-gray-600 w-10">Set 1</span>
+          <div class="flex items-center gap-1.5 flex-1">
+            <button onclick="adjScore(0,0,-1)" class="score-btn">−</button>
+            <span id="sm-s0-0" class="score-val">0</span>
+            <button onclick="adjScore(0,0,+1)" class="score-btn">+</button>
+          </div>
+          <span class="text-gray-600 text-xl mx-1">–</span>
+          <div class="flex items-center gap-1.5 flex-1 justify-end">
+            <button onclick="adjScore(0,1,-1)" class="score-btn">−</button>
+            <span id="sm-s0-1" class="score-val">0</span>
+            <button onclick="adjScore(0,1,+1)" class="score-btn">+</button>
+          </div>
+        </div>
+        <!-- Set 2 -->
+        <div class="flex items-center gap-1">
+          <span class="text-xs font-bold text-gray-600 w-10">Set 2</span>
+          <div class="flex items-center gap-1.5 flex-1">
+            <button onclick="adjScore(1,0,-1)" class="score-btn">−</button>
+            <span id="sm-s1-0" class="score-val">0</span>
+            <button onclick="adjScore(1,0,+1)" class="score-btn">+</button>
+          </div>
+          <span class="text-gray-600 text-xl mx-1">–</span>
+          <div class="flex items-center gap-1.5 flex-1 justify-end">
+            <button onclick="adjScore(1,1,-1)" class="score-btn">−</button>
+            <span id="sm-s1-1" class="score-val">0</span>
+            <button onclick="adjScore(1,1,+1)" class="score-btn">+</button>
+          </div>
+        </div>
+        <!-- Set 3 / Super Tiebreak (dynamic label) -->
+        <div class="pt-1 border-t border-gray-100">
+          <div class="flex items-center gap-1">
+            <div class="w-10" id="sm-s3-label">
+              <span class="text-xs font-bold text-gray-600">S.TB</span>
+              <div class="text-xs text-gray-500 leading-none">a 11</div>
+            </div>
+            <div class="flex items-center gap-1.5 flex-1">
+              <button onclick="adjScore(2,0,-1)" class="score-btn">−</button>
+              <span id="sm-s2-0" class="score-val">0</span>
+              <button onclick="adjScore(2,0,+1)" class="score-btn">+</button>
+            </div>
+            <span class="text-gray-600 text-xl mx-1">–</span>
+            <div class="flex items-center gap-1.5 flex-1 justify-end">
+              <button onclick="adjScore(2,1,-1)" class="score-btn">−</button>
+              <span id="sm-s2-1" class="score-val">0</span>
+              <button onclick="adjScore(2,1,+1)" class="score-btn">+</button>
+            </div>
+          </div>
+          <div class="flex gap-2 mt-2 pl-10" id="sm-s3-shortcuts">
+            <span class="text-xs text-gray-600">Atajo:</span>
+            <button onclick="scoreModal.sets[2][0]=11;scoreModal.sets[2][1]=0;document.getElementById('sm-error').classList.add('hidden');refreshScoreModal()" class="text-xs px-2 py-0.5 rounded" style="background:#f3f4f6;color:#374151">11–0</button>
+            <button onclick="scoreModal.sets[2][0]=11;scoreModal.sets[2][1]=8;document.getElementById('sm-error').classList.add('hidden');refreshScoreModal()" class="text-xs px-2 py-0.5 rounded" style="background:#f3f4f6;color:#374151">11–8</button>
+            <button onclick="scoreModal.sets[2][0]=11;scoreModal.sets[2][1]=9;document.getElementById('sm-error').classList.add('hidden');refreshScoreModal()" class="text-xs px-2 py-0.5 rounded" style="background:#f3f4f6;color:#374151">11–9</button>
+            <button onclick="scoreModal.sets[2][0]=11;scoreModal.sets[2][1]=10;document.getElementById('sm-error').classList.add('hidden');refreshScoreModal()" class="text-xs px-2 py-0.5 rounded" style="background:#f3f4f6;color:#374151">11–10</button>
+          </div>
+        </div>
+      </div>
+      <!-- Error banner -->
+      <div id="sm-error" class="hidden mt-3 py-2 px-3 rounded-xl text-sm text-center" style="background:#fef2f2;color:#dc2626"></div>
+      <!-- Winner banner -->
+      <div id="sm-winner" class="hidden mt-3 py-2 px-3 rounded-xl text-sm font-bold text-center" style="background:#edfad0;color:#3d6600"></div>
+      <!-- Actions -->
+      <div class="flex gap-3 mt-4">
+        <button onclick="closeScoreModal()" class="flex-1 py-3 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600">Cancelar</button>
+        <button onclick="saveScoreModal()" class="flex-1 py-3 rounded-xl text-sm font-bold btn-primary">Guardar resultado</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ EDIT PAIR MODAL ══════════════════════════════════════════════════════ -->
+<div id="edit-pair-modal" onclick="closeEditPairModal()" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.65)">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onclick="event.stopPropagation()">
+    <div class="px-5 py-3 flex items-center justify-between" style="background:#1A2500">
+      <span class="text-xs font-bold uppercase tracking-wider" style="color:#78C832">✏️ Editar pareja</span>
+      <button onclick="closeEditPairModal()" class="text-gray-400 hover:text-white text-xl leading-none">✕</button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div>
+        <label class="text-xs font-semibold text-gray-500 uppercase block mb-1">Jugador 1</label>
+        <input id="ep-p1" type="text" placeholder="Nombre y apellido" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-green-400">
+      </div>
+      <div>
+        <label class="text-xs font-semibold text-gray-500 uppercase block mb-1">Jugador 2</label>
+        <input id="ep-p2" type="text" placeholder="Nombre y apellido" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-green-400">
+      </div>
+      <div class="flex gap-3 pt-1">
+        <button onclick="closeEditPairModal()" class="flex-1 py-3 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600">Cancelar</button>
+        <button onclick="saveEditPair()" class="flex-1 py-3 rounded-xl text-sm font-bold btn-primary">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ REGISTRO CONFIRMACIÓN MODAL ═════════════════════════════════════════ -->
+<div id="reg-modal" onclick="closeRegModal()" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center" style="background:rgba(0,0,0,0.65)">
+  <div class="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl w-full sm:max-w-sm mx-0 sm:mx-4 text-center px-6 py-8" onclick="event.stopPropagation()">
+    <div id="reg-modal-icon" class="text-5xl mb-3"></div>
+    <h2 id="reg-modal-title" class="text-xl font-black text-gray-900 mb-2"></h2>
+    <p id="reg-modal-pair" class="text-base font-bold mb-1" style="color:#3d6600"></p>
+    <p id="reg-modal-msg" class="text-sm text-gray-500 mb-7"></p>
+    <button onclick="closeRegModal()" class="w-full py-3 rounded-xl font-bold text-sm" style="background:#B8FF00;color:#1A2500">¡Listo!</button>
+  </div>
+</div>
+
+<!-- ══ PHOTO VIEWER ════════════════════════════════════════════════════════ -->
+<div id="photo-viewer" onclick="closePhotoViewer()" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background:rgba(0,0,0,0.85)">
+  <div class="relative max-w-lg w-full" onclick="event.stopPropagation()">
+    <img id="photo-viewer-img" src="" alt="Foto del partido" class="w-full rounded-2xl shadow-2xl object-contain max-h-[80vh]">
+    <div class="flex gap-3 mt-3">
+      <button onclick="closePhotoViewer()" class="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white border border-white/30">Cerrar</button>
+      <button onclick="downloadViewerPhoto()" class="flex-1 py-2.5 rounded-xl text-sm font-bold" style="background:#B8FF00;color:#1A2500">⬇ Descargar</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
