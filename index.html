@@ -1782,6 +1782,128 @@ function setScore(matchId, setIdx, side, value) {
 const BRACKET_ORDER = ['16avos','8avos','cuartos','semis','final'];
 const BRACKET_NAMES = {'16avos':'16avos de Final','8avos':'8vos de Final','cuartos':'Cuartos de Final','semis':'Semifinales','final':'Final'};
 
+// ── Visual bracket helpers ───────────────────────────────────────
+function bvRow(m, side) {
+  const seed  = m[side+'Seed'] || '';
+  const pairObj = m[side+'Id'] ? db.pairs.find(p=>p.id===m[side+'Id']) : null;
+  const label = m[side+'Label'] || (pairObj ? pairLabel(pairObj) : '—');
+  const won   = m.winner === side;
+  const lost  = m.winner && !won;
+  const isBye = label === 'BYE';
+  const scores = (m.sets||[]).filter(([a,b])=>a!=null&&a!==''&&b!=null&&b!=='').map(([a,b])=>side==='p1'?a:b);
+  return `<div style="display:flex;align-items:center;gap:5px;padding:7px 10px;background:${won?'#f0fdf4':'white'};border-bottom:${side==='p1'?'1px solid #f3f4f6':'none'};">
+    ${seed ? `<span style="font-size:10px;font-weight:700;color:#9ca3af;min-width:24px;flex-shrink:0;">${seed}</span>` : ''}
+    <span style="flex:1;font-size:12px;font-weight:${won?700:400};color:${isBye?'#d1d5db':won?'#166534':lost?'#9ca3af':'#374151'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</span>
+    ${won?`<span style="color:#16a34a;font-size:11px;flex-shrink:0;">✓</span>`:''}
+    <div style="display:flex;gap:2px;flex-shrink:0;">${scores.map(s=>`<span style="font-size:12px;font-weight:${won?700:400};color:${won?'#166534':'#9ca3af'};min-width:14px;text-align:center;">${s}</span>`).join('')}</div>
+  </div>`;
+}
+
+function renderBracketVisual(t, bm, unlockedPhases) {
+  const bi         = t.bracketInfo || {};
+  const byePairs   = bi.byePairs   || [];
+  const previaPhase= bi.previaPhase;
+
+  const phases = BRACKET_ORDER.filter(ph => bm.some(m => m.phase === ph));
+  if (!phases.length) return '';
+
+  // Build slot arrays per round
+  const rounds = [];
+  phases.forEach((ph, ri) => {
+    const matches = bm.filter(m => m.phase === ph).sort((a,b) => a.matchNum - b.matchNum);
+    if (ri === 0 && ph === previaPhase && byePairs.length === 2) {
+      // 2 byes: one at top, one at bottom around the previa matches
+      rounds.push({ phase: ph, slots: [
+        { type:'bye',   data: byePairs[0] },
+        ...matches.map(m => ({ type:'match', data: m })),
+        { type:'bye',   data: byePairs[1] },
+      ]});
+    } else {
+      rounds.push({ phase: ph, slots: matches.map(m => ({ type:'match', data: m })) });
+    }
+  });
+
+  const SLOT_H   = 110;
+  const maxSlots = Math.max(...rounds.map(r => r.slots.length));
+  const TOTAL_H  = maxSlots * SLOT_H;
+  const COL_W    = 268;
+  const CONN_W   = 32;
+  const HDR_H    = 32;
+
+  let html = `<div style="display:flex;overflow-x:auto;padding:0 0 16px;gap:0;min-height:${TOTAL_H+HDR_H+20}px;">`;
+
+  rounds.forEach(({ phase, slots }, ri) => {
+    const isLastPhase = ri === rounds.length - 1;
+    const isLocked    = !isLastPhase && !(unlockedPhases||[]).includes(phase);
+    const itemH       = TOTAL_H / slots.length;
+
+    html += `<div style="flex:0 0 auto;width:${COL_W}px;display:flex;flex-direction:column;">`;
+
+    // Phase header
+    html += `<div style="height:${HDR_H}px;display:flex;align-items:center;gap:5px;padding:0 2px;">
+      <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;color:${PHASE_COLORS[phase]||'#6b7280'};">${BRACKET_NAMES[phase]||phase}</span>
+      ${!isLastPhase?`<button onclick="toggleBracketPhaseLock('${t.id}','${phase}')" title="${isLocked?'Desbloquear':'Bloquear'}" style="font-size:12px;opacity:0.5;padding:0;background:none;border:none;cursor:pointer;">${isLocked?'🔒':'🔓'}</button>`:''}
+    </div>`;
+
+    // Slots
+    slots.forEach(slot => {
+      if (slot.type === 'match') {
+        const m = slot.data;
+        const isByeMatch = m.p2Label === 'BYE';
+        const canEnter   = !isLocked && !isByeMatch && m.p1Label && m.p2Label;
+        html += `<div style="height:${itemH}px;display:flex;align-items:center;padding:3px 6px 3px 2px;box-sizing:border-box;">
+          <div onclick="${canEnter?`openScoreModal('${m.id}',true)`:''}" style="width:100%;border-radius:12px;overflow:hidden;border:1.5px solid ${m.winner?'#c6f6d5':'#e5e7eb'};background:white;box-shadow:0 1px 3px rgba(0,0,0,0.07);${canEnter?'cursor:pointer;':''}">
+            ${bvRow(m,'p1')}
+            ${bvRow(m,'p2')}
+            ${m.matchDay||m.matchTime?`<div style="padding:2px 10px;font-size:10px;color:#9ca3af;border-top:1px solid #f3f4f6;background:#fafafa;">${[m.matchDay,m.matchTime].filter(Boolean).join(' · ')}</div>`:''}
+          </div>
+        </div>`;
+      } else if (slot.type === 'bye') {
+        const c = slot.data;
+        html += `<div style="height:${itemH}px;display:flex;align-items:center;padding:3px 6px 3px 2px;box-sizing:border-box;">
+          <div style="width:100%;border-radius:12px;border:2px solid #1A2500;background:#1A2500;padding:9px 10px;box-sizing:border-box;">
+            <div style="display:flex;align-items:center;gap:5px;">
+              <span style="font-size:10px;font-weight:700;color:#B8FF00;min-width:26px;flex-shrink:0;">${c.seed||''}</span>
+              <span style="flex:1;font-size:12px;font-weight:700;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.label||''}</span>
+              <span style="font-size:9px;font-weight:700;color:#78C832;background:#2d4000;padding:1px 5px;border-radius:9px;flex-shrink:0;">BYE</span>
+            </div>
+          </div>
+        </div>`;
+      }
+    });
+
+    html += `</div>`;
+
+    // Connector SVG between rounds (only for clean 2:1 ratio)
+    if (ri < rounds.length - 1) {
+      const nextLen = rounds[ri+1].slots.length;
+      const canConn = slots.length === nextLen * 2;
+      html += `<div style="flex:0 0 auto;width:${CONN_W}px;">`;
+      html += `<div style="height:${HDR_H}px;"></div>`;
+      if (canConn) {
+        html += `<svg width="${CONN_W}" height="${TOTAL_H}" style="display:block;">`;
+        for (let g = 0; g < nextLen; g++) {
+          const y1   = (g*2 + 0.5) * itemH;
+          const y2   = (g*2 + 1.5) * itemH;
+          const yMid = (y1 + y2) / 2;
+          const cx   = CONN_W * 0.55;
+          html += `<line x1="0" y1="${y1}" x2="${cx}" y2="${y1}" stroke="#d1d5db" stroke-width="1.5"/>
+<line x1="${cx}" y1="${y1}" x2="${cx}" y2="${y2}" stroke="#d1d5db" stroke-width="1.5"/>
+<line x1="0" y1="${y2}" x2="${cx}" y2="${y2}" stroke="#d1d5db" stroke-width="1.5"/>
+<line x1="${cx}" y1="${yMid}" x2="${CONN_W}" y2="${yMid}" stroke="#d1d5db" stroke-width="1.5"/>`;
+        }
+        html += `</svg>`;
+      } else {
+        html += `<div style="height:${TOTAL_H}px;"></div>`;
+      }
+      html += `</div>`;
+    }
+  });
+
+  html += `</div>`;
+  return html;
+}
+
 function viewAdminBracket() {
   const t = db.tournaments.find(t=>t.id===activeTId); if (!t) return '';
   const zones = getZones(t.id);
@@ -1862,78 +1984,60 @@ function viewAdminBracket() {
           <div class="text-xl font-black" style="color:#B8FF00">${champion}</div>
         </div>` : ''}
 
-      <!-- Bracket rounds -->
+      <!-- Visual bracket tree -->
       ${bm.length > 0 ? `
         <div class="flex items-center justify-between mb-3">
-          <span class="text-sm font-bold text-gray-700">Rondas del bracket</span>
-          <button onclick="pdfBracket('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50">📄 PDF Bracket</button>
+          <span class="text-sm font-bold text-gray-700">Bracket</span>
+          <button onclick="pdfBracket('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50">📄 PDF</button>
         </div>
-        <div class="space-y-5">
-          ${bmPhases.map((ph, phIdx) => {
-            const phMatches = bm.filter(m=>m.phase===ph).sort((a,b)=>a.matchNum-b.matchNum);
-            const phDone = phMatches.every(m=>m.winner);
-            const isLastPhase = ph === currentPhase;
-            // Locked if a later phase exists AND not manually unlocked
-            const isLocked = !isLastPhase && !unlockedPhases.includes(ph);
-            return `
-              <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div class="px-5 py-3 flex items-center justify-between" style="background:${phDone?'#1A2500':'#f9fafb'}">
-                  <span class="font-bold text-sm uppercase" style="color:${phDone?'#B8FF00':PHASE_COLORS[ph]||'#6b7280'}">${BRACKET_NAMES[ph]||ph}</span>
-                  <div class="flex items-center gap-2">
-                    ${phDone?`<span class="text-xs font-bold" style="color:#ef4444">✓ Ronda completa</span>`:''}
-                    ${!isLastPhase?`<button onclick="toggleBracketPhaseLock('${t.id}','${ph}')" class="text-xs px-1 py-0.5 rounded opacity-70 hover:opacity-100 transition-opacity" style="color:${phDone?'#B8FF00':'#6b7280'}" title="${isLocked?'Desbloquear para editar':'Bloquear ronda'}">${isLocked?'🔒':'🔓'}</button>`:''}
-                  </div>
-                </div>
-                <div class="p-4 space-y-4">
-                  ${phMatches.map((m,mi) => {
-                    const canEnter = !isLocked && m.p1Label && m.p2Label && m.p2Label !== 'BYE';
-                    const isBye = m.p2Label === 'BYE';
-                    return `
-                    <div>
-                      <div class="text-xs font-semibold text-gray-600 mb-2 uppercase">Cruce ${mi+1}${isBye?' · BYE':''}</div>
-                      ${bracketMatchCard(m, ph)}
-                      ${!isBye ? `
-                        <div class="mt-2 flex gap-1.5 items-center">
-                          <select onchange="saveBracketMatchTime('${m.id}','day',this.value)"
-                            class="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none bg-white text-gray-700">
-                            <option value="">Día</option>
-                            ${['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'].map(d=>`<option value="${d}"${m.matchDay===d?' selected':''}>${d}</option>`).join('')}
-                          </select>
-                          <input type="time" value="${m.matchTime||''}"
-                            onchange="saveBracketMatchTime('${m.id}','time',this.value)"
-                            class="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none text-gray-700">
-                        </div>` : ''}
-                      ${canEnter ? `
-                        <button onclick="openScoreModal('${m.id}', true)"
-                          class="w-full mt-2 py-2 rounded-lg text-xs font-bold transition-all"
-                          style="background:${m.winner?'#edfad0':'#f3f4f6'};color:${m.winner?'#3d6600':'#6b7280'}">
-                          ${m.winner ? '✎ Editar resultado' : '⊕ Cargar resultado'}
-                        </button>` :
-                        isBye ? '' :
-                        isLocked && m.winner ? '' :
-                        `<div class="mt-2 text-xs text-center text-gray-500 italic">Por definir</div>`}
-                      ${!isBye ? `
-                        <div class="mt-2 flex items-center gap-2">
-                          <label class="cursor-pointer text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1">
-                            <input type="file" accept="image/*" class="hidden" onchange="attachMatchPhoto('${m.id}',this)">
-                            ${m.photo ? '🔄 Cambiar foto' : '📷 Adjuntar foto'}
-                          </label>
-                          ${m.photo ? `<button onclick="removeMatchPhoto('${m.id}')" class="text-xs text-red-400 hover:text-red-600">✕ Quitar</button>` : ''}
-                          ${m.photo ? `<img src="${m.photo}" class="h-8 w-8 rounded object-cover ml-auto cursor-pointer" onclick="openPhotoViewer('${m.id}')" title="Ver foto">` : ''}
-                        </div>` : ''}
-                    </div>`;
-                  }).join('')}
-                </div>
-                ${isLastPhase && phDone && nextPhase ? `
-                  <div class="px-5 py-4 border-t border-gray-100 flex justify-center">
-                    <button onclick="advanceBracket()"
-                      class="btn-primary px-6 py-2.5 rounded-xl font-bold text-sm">
-                      ⚡ Generar ${BRACKET_NAMES[nextPhase]}
-                    </button>
-                  </div>` : ''}
-              </div>`;
-          }).join('')}
+        <div class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style="background:#fafafa;">
+          <div style="padding:12px 8px 4px 12px;">
+            ${renderBracketVisual(t, bm, unlockedPhases)}
+          </div>
+
+          <!-- Per-match controls (time scheduling + score entry) -->
+          <div class="border-t border-gray-100 divide-y divide-gray-50">
+            ${bmPhases.map(ph => {
+              const phMatches = bm.filter(m=>m.phase===ph).sort((a,b)=>a.matchNum-b.matchNum);
+              const isLastPhase = ph === currentPhase;
+              const isLocked = !isLastPhase && !unlockedPhases.includes(ph);
+              return phMatches.filter(m => m.p2Label !== 'BYE').map((m,mi) => {
+                const canEnter = !isLocked && m.p1Label && m.p2Label;
+                return `
+                <div class="px-4 py-3 flex flex-wrap items-center gap-2" style="background:white;">
+                  <span class="text-xs font-bold" style="color:${PHASE_COLORS[ph]||'#6b7280'};min-width:80px;">${BRACKET_NAMES[ph]||ph} #${mi+1}</span>
+                  <select onchange="saveBracketMatchTime('${m.id}','day',this.value)"
+                    class="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none bg-white text-gray-700">
+                    <option value="">Día</option>
+                    ${['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'].map(d=>`<option value="${d}"${m.matchDay===d?' selected':''}>${d}</option>`).join('')}
+                  </select>
+                  <input type="time" value="${m.matchTime||''}"
+                    onchange="saveBracketMatchTime('${m.id}','time',this.value)"
+                    class="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none text-gray-700">
+                  ${canEnter ? `
+                  <button onclick="openScoreModal('${m.id}',true)"
+                    class="ml-auto px-3 py-1 rounded-lg text-xs font-bold"
+                    style="background:${m.winner?'#edfad0':'#f3f4f6'};color:${m.winner?'#3d6600':'#6b7280'};">
+                    ${m.winner?'✎ Editar':'⊕ Resultado'}
+                  </button>` : ''}
+                  <label class="cursor-pointer text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 ${canEnter?'':'ml-auto'}">
+                    <input type="file" accept="image/*" class="hidden" onchange="attachMatchPhoto('${m.id}',this)">
+                    ${m.photo?'🔄':'📷'}
+                  </label>
+                  ${m.photo?`<img src="${m.photo}" class="h-6 w-6 rounded object-cover cursor-pointer" onclick="openPhotoViewer('${m.id}')" title="Ver foto"><button onclick="removeMatchPhoto('${m.id}')" class="text-xs text-red-400">✕</button>`:''}
+                </div>`;
+              }).join('');
+            }).join('')}
+          </div>
+        </div>
+
+        ${allCurrentDone && nextPhase ? `
+        <div class="flex justify-center mt-5">
+          <button onclick="advanceBracket()" class="btn-primary px-6 py-2.5 rounded-xl font-bold text-sm">
+            ⚡ Generar ${BRACKET_NAMES[nextPhase]}
+          </button>
         </div>` : ''}
+      ` : ''}
     </div>`;
 }
 
