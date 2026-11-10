@@ -2511,12 +2511,32 @@ function saveScoreModal() {
     if(a!==null&&b!==null){ if(+a>+b)p1s++; else if(+b>+a)p2s++; }
   });
   m.winner = p1s>=2?'p1':p2s>=2?'p2':null;
-  // 3-pair zone: match 1 winner/loser → matches 2 & 3
-  if (m.phase==='zonas' && m.matchNum===1 && m.winner) {
+  // Zone propagation after saving a result
+  if (m.phase==='zonas' && m.winner) {
     const zm = db.matches.filter(x=>x.tId===m.tId&&x.zone===m.zone&&x.phase==='zonas').sort((a,b)=>a.matchNum-b.matchNum);
-    const m2=zm.find(x=>x.matchNum===2); const m3=zm.find(x=>x.matchNum===3);
-    if(m2) m2.p1Id = m.winner==='p1'?m.p1Id:m.p2Id;
-    if(m3) m3.p1Id = m.winner==='p1'?m.p2Id:m.p1Id;
+    const m2=zm.find(x=>x.matchNum===2); const m3=zm.find(x=>x.matchNum===3); const m4=zm.find(x=>x.matchNum===4);
+    const zonePairs = db.pairs.filter(p=>p.tId===m.tId&&p.zone===m.zone&&!p.suplente);
+    const isZone4 = zonePairs.length === 4;
+    if (!isZone4) {
+      // 3-pair zone: match 1 → populate m2 and m3
+      if (m.matchNum===1) {
+        if(m2) m2.p1Id = m.winner==='p1'?m.p1Id:m.p2Id;
+        if(m3) m3.p1Id = m.winner==='p1'?m.p2Id:m.p1Id;
+      }
+    } else {
+      // 4-pair zone: auto-create m3/m4 if missing (old import data)
+      if (!m3) db.matches.push({id:uid(),tId:m.tId,phase:'zonas',zone:m.zone,matchNum:3,p1Id:null,p2Id:null,p1Label:`Gan.${m.zone}1/${m.zone}4`,p2Label:`Gan.${m.zone}2/${m.zone}3`,sets:[[null,null],[null,null],[null,null]],winner:null});
+      if (!m4) db.matches.push({id:uid(),tId:m.tId,phase:'zonas',zone:m.zone,matchNum:4,p1Id:null,p2Id:null,p1Label:`Perd.${m.zone}1/${m.zone}4`,p2Label:`Perd.${m.zone}2/${m.zone}3`,sets:[[null,null],[null,null],[null,null]],winner:null});
+      // After both m1 and m2 done, fill in m3/m4 with actual pair IDs
+      if (m.matchNum===1 || m.matchNum===2) {
+        const zm2=db.matches.filter(x=>x.tId===m.tId&&x.zone===m.zone&&x.phase==='zonas');
+        const rm1=zm2.find(x=>x.matchNum===1),rm2=zm2.find(x=>x.matchNum===2),rm3=zm2.find(x=>x.matchNum===3),rm4=zm2.find(x=>x.matchNum===4);
+        if(rm1?.winner && rm2?.winner && rm3 && rm4){
+          rm3.p1Id=rm1.winner==='p1'?rm1.p1Id:rm1.p2Id; rm3.p2Id=rm2.winner==='p1'?rm2.p1Id:rm2.p2Id; rm3.p1Label=null; rm3.p2Label=null;
+          rm4.p1Id=rm1.winner==='p1'?rm1.p2Id:rm1.p1Id; rm4.p2Id=rm2.winner==='p1'?rm2.p2Id:rm2.p1Id; rm4.p1Label=null; rm4.p2Label=null;
+        }
+      }
+    }
   }
   saveDB();
   // Show winner briefly before closing
