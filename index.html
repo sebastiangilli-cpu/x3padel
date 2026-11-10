@@ -499,8 +499,10 @@ function publicZoneCard(t, zone) {
               const L = zone.letter;
               const ps = zone.pairs;
               let labels = [];
-              if (t.ppz === 3 && ps.length >= 2) {
-                labels = [`${L}1 vs ${L}2`, `Gan. vs ${L}3`, `Perd. vs ${L}3`];
+              if (ps.length === 3) {
+                labels = [`${L}1 vs ${L}2`, `Gan.(${L}1/${L}2) vs ${L}3`, `Perd.(${L}1/${L}2) vs ${L}3`];
+              } else if (ps.length === 4) {
+                labels = [`${L}1 vs ${L}4`, `${L}2 vs ${L}3`, `Gan.(1/4) vs Gan.(2/3)`, `Perd.(1/4) vs Perd.(2/3)`];
               } else {
                 for (let i = 0; i < ps.length; i++)
                   for (let j = i+1; j < ps.length; j++)
@@ -720,13 +722,6 @@ function viewAdmin() {
             <input id="nt-date" type="text" placeholder="01/09/2026" class="field">
           </div>
           <div>
-            <label class="label">Parejas por zona</label>
-            <select id="nt-ppz" class="field">
-              <option value="3" selected>3 parejas</option>
-              <option value="4">4 parejas</option>
-            </select>
-          </div>
-          <div>
             <label class="label">Cupo máximo de parejas</label>
             <input id="nt-max" type="number" min="2" max="200" placeholder="Ej: 12  (dejar vacío = sin límite)" class="field">
           </div>
@@ -755,13 +750,6 @@ function viewAdmin() {
           <div>
             <label class="label">Fecha de inicio</label>
             <input id="et-date" type="text" class="field">
-          </div>
-          <div>
-            <label class="label">Parejas por zona</label>
-            <select id="et-ppz" class="field">
-              <option value="3">3 parejas</option>
-              <option value="4">4 parejas</option>
-            </select>
           </div>
           <div>
             <label class="label">Cupo máximo de parejas</label>
@@ -829,11 +817,10 @@ function viewAdmin() {
 function createTournament() {
   const name = document.getElementById('nt-name').value.trim();
   const date = document.getElementById('nt-date').value.trim();
-  const ppz  = parseInt(document.getElementById('nt-ppz').value);
   const maxPairs = parseInt(document.getElementById('nt-max').value) || 0;
   const playSlots = readDaySlots('nt-slots');
   if (!name) { alert('Ingresá un nombre'); return; }
-  db.tournaments.push({ id:uid(), name, startDate:date, ppz, maxPairs, playSlots, status:'inscripciones', ts:new Date().toISOString() });
+  db.tournaments.push({ id:uid(), name, startDate:date, maxPairs, playSlots, status:'inscripciones', ts:new Date().toISOString() });
   const sc = document.getElementById('nt-slots');
   sc.innerHTML = '';
   addDaySlot('nt-slots');
@@ -890,7 +877,6 @@ function openEditTournament(tId) {
   document.getElementById('et-id').value   = tId;
   document.getElementById('et-name').value = t.name;
   document.getElementById('et-date').value = t.startDate || '';
-  document.getElementById('et-ppz').value  = t.ppz || 3;
   document.getElementById('et-max').value  = t.maxPairs || '';
   // Populate slots (grouped by day)
   const sc = document.getElementById('et-slots');
@@ -933,7 +919,6 @@ function saveEditTournament() {
   const t   = db.tournaments.find(x=>x.id===tId); if (!t) return;
   const newName   = document.getElementById('et-name').value.trim();
   const newDate   = document.getElementById('et-date').value.trim();
-  const newPpz    = parseInt(document.getElementById('et-ppz').value);
   const newMax    = parseInt(document.getElementById('et-max').value) || 0;
   const newSlots = readDaySlots('et-slots');
   if (!newName) { alert('Ingresá un nombre'); return; }
@@ -955,7 +940,6 @@ function saveEditTournament() {
 
   t.name      = newName;
   t.startDate = newDate;
-  t.ppz       = newPpz;
   t.maxPairs  = newMax;
   t.playSlots = newSlots;
 
@@ -1101,11 +1085,25 @@ function removePair(id) {
 // ═══════════════════════════════════════════════════════════════════
 //  ADMIN – ZONES
 // ═══════════════════════════════════════════════════════════════════
+function computeZoneSizes(N) {
+  if (N < 3) return [];
+  const rem = N % 3;
+  const nZ4 = (rem === 0) ? 0 : (rem === 1 ? 1 : (N >= 8 ? 2 : 1));
+  const nZones = Math.floor(N / 3);
+  return Array.from({length: nZones}, (_, i) => i < nZ4 ? 4 : 3);
+}
+
 function viewAdminZones() {
   const t = db.tournaments.find(t=>t.id===activeTId); if (!t) return '';
   const pairs = db.pairs.filter(p=>p.tId===t.id && !p.suplente);
   const assigned = pairs.filter(p=>p.zone);
-  const nZones = Math.ceil(pairs.length / t.ppz);
+  const zoneSizes = computeZoneSizes(pairs.length);
+  const nZones = zoneSizes.length;
+  const nZ4 = zoneSizes.filter(s=>s===4).length;
+  const nZ3 = zoneSizes.filter(s=>s===3).length;
+  const zonaDesc = nZ4 > 0
+    ? `${nZ4} zona${nZ4!==1?'s':''} de 4 + ${nZ3} de 3`
+    : `${nZones} zona${nZones!==1?'s':''} de 3`;
 
   return `
     <div>
@@ -1113,9 +1111,7 @@ function viewAdminZones() {
       <div class="bg-white rounded-2xl border border-gray-100 p-5 mb-5 shadow-sm">
         <div class="flex flex-wrap items-center gap-4">
           <div class="text-sm text-gray-600">
-            <b>${pairs.length}</b> parejas →
-            <b>${nZones}</b> zona${nZones!==1?'s':''} de <b>${t.ppz}</b> c/u
-            ${pairs.length % t.ppz !== 0 ? `<span class="text-orange-500 ml-1">(última zona: ${pairs.length%t.ppz} pareja${pairs.length%t.ppz!==1?'s':''})</span>` : ''}
+            <b>${pairs.length}</b> parejas → <b>${zonaDesc}</b>
           </div>
           <div class="flex gap-2 ml-auto flex-wrap">
             <button onclick="autoZones()" class="btn-primary px-4 py-2 rounded-xl text-sm font-bold">🔀 Asignar automáticamente</button>
@@ -1136,12 +1132,20 @@ function viewAdminZones() {
             const zSched = getZoneSchedule(t, zone.letter);
             // Build match schedule rows with pair identifiers (A1 vs A2, etc.)
             const L = zone.letter;
+            const pairCount = zone.pairs.length;
             let matchLabels;
-            if (t.ppz === 3) {
+            if (pairCount === 3) {
               matchLabels = [
                 `${L}1 vs ${L}2`,
                 `Gan.(${L}1/${L}2) vs ${L}3`,
                 `Perd.(${L}1/${L}2) vs ${L}3`,
+              ];
+            } else if (pairCount === 4) {
+              matchLabels = [
+                `${L}1 vs ${L}4`,
+                `${L}2 vs ${L}3`,
+                `Gan.(${L}1/${L}4) vs Gan.(${L}2/${L}3)`,
+                `Perd.(${L}1/${L}4) vs Perd.(${L}2/${L}3)`,
               ];
             } else {
               matchLabels = [];
@@ -1186,55 +1190,62 @@ function autoZones() {
   const pairs = db.pairs.filter(p=>p.tId===t.id && !p.suplente);
   if (pairs.length === 0) { alert('No hay parejas inscriptas'); return; }
 
+  const zoneSizes = computeZoneSizes(pairs.length);
+  if (zoneSizes.length === 0) { alert('Se necesitan al menos 3 parejas para armar zonas'); return; }
+
   const playDays = t.playSlots ? t.playSlots.map(s=>s.day).filter(Boolean)
                                : (t.playDays || []);
-  const sh = smartShuffleZones(pairs, playDays, t.ppz);
-  sh.forEach((p,i) => {
-    const dbp = db.pairs.find(x=>x.id===p.id);
-    dbp.zone = String.fromCharCode(65 + Math.floor(i / t.ppz));
-    dbp.pos  = (i % t.ppz) + 1;
-  });
+  const sh = smartShuffleZones(pairs, playDays, zoneSizes);
 
-  // Randomly assign day slots to zone letters (shuffle slots first)
-  const nZones = Math.ceil(pairs.length / t.ppz);
+  // Assign zone letters and positions based on cumulative zone sizes
+  let offset = 0;
+  for (let zi = 0; zi < zoneSizes.length; zi++) {
+    const letter = String.fromCharCode(65 + zi);
+    const size = zoneSizes[zi];
+    for (let pos = 1; pos <= size; pos++) {
+      const p = sh[offset++];
+      if (p) {
+        const dbp = db.pairs.find(x=>x.id===p.id);
+        dbp.zone = letter;
+        dbp.pos  = pos;
+      }
+    }
+  }
+
+  // Randomly assign day slots to zone letters
   if (t.playSlots && t.playSlots.length > 0) {
     const slots = [...t.playSlots].sort(() => Math.random() - 0.5);
     const zoneMap = {};
-    for (let z = 0; z < nZones; z++) {
+    for (let z = 0; z < zoneSizes.length; z++) {
       const letter = String.fromCharCode(65 + z);
       zoneMap[letter] = slots[z] || slots[slots.length - 1];
     }
     t.zoneAssignments = zoneMap;
   }
 
-  genZoneMatches(t, sh);
+  genZoneMatches(t, sh, zoneSizes);
   saveDB(); render();
 }
 
-function smartShuffleZones(pairs, playDays, ppz) {
-  const nZones = Math.ceil(pairs.length / ppz);
+function smartShuffleZones(pairs, playDays, zoneSizes) {
+  const nZones = zoneSizes.length;
   if (!playDays || playDays.length === 0) {
     return [...pairs].sort(() => Math.random() - 0.5);
   }
 
-  // Random shuffle first for fairness
+  // Random shuffle first for fairness, then sort most-constrained first
   const shuffled = [...pairs].sort(() => Math.random() - 0.5);
-
-  // Sort so most-constrained pairs go first (more unavailable days = harder to place)
   shuffled.sort((a, b) => getPairUnavailDays(b).length - getPairUnavailDays(a).length);
 
   const buckets = Array.from({length: nZones}, () => []);
 
   for (const pair of shuffled) {
-    // Score each zone: prefer zones where pair CAN play AND has most free spots
     let bestZone = -1, bestScore = -Infinity;
     for (let zi = 0; zi < nZones; zi++) {
-      if (buckets[zi].length >= ppz) continue; // full
+      if (buckets[zi].length >= zoneSizes[zi]) continue; // full
       const zoneDay = playDays[zi % playDays.length];
       const unavDays = getPairUnavailDays(pair);
       const canPlay = unavDays.length === 0 || !unavDays.includes(zoneDay);
-      // Can-play zones score positively, can't-play zones score negatively
-      // Tie-break by most remaining space (to spread pairs evenly)
       const score = (canPlay ? 1000 : 0) - buckets[zi].length;
       if (score > bestScore) { bestScore = score; bestZone = zi; }
     }
@@ -1244,23 +1255,37 @@ function smartShuffleZones(pairs, playDays, ppz) {
   return buckets.flat();
 }
 
-function genZoneMatches(t, sh) {
+function genZoneMatches(t, sh, zoneSizes) {
   db.matches = db.matches.filter(m => !(m.tId===t.id && m.phase==='zonas'));
-  const nZ = Math.ceil(sh.length / t.ppz);
 
-  for (let z = 0; z < nZ; z++) {
+  let offset = 0;
+  for (let z = 0; z < zoneSizes.length; z++) {
     const letter = String.fromCharCode(65 + z);
-    const zp = sh.slice(z * t.ppz, (z+1) * t.ppz);
+    const size = zoneSizes[z];
+    const zp = sh.slice(offset, offset + size);
+    offset += size;
 
-    if (t.ppz === 3) {
-      // P1 vs P2 (match 1), then winner vs P3 (match 2), loser vs P3 (match 3)
+    if (size === 3) {
+      // P1 vs P2, then winner vs P3, loser vs P3
       if (zp.length >= 2) mkMatch(t.id, 'zonas', letter, 1, zp[0]?.id, zp[1]?.id);
       if (zp.length >= 3) {
-        mkMatch(t.id, 'zonas', letter, 2, null, zp[2]?.id, 'Gan. P1');
-        mkMatch(t.id, 'zonas', letter, 3, null, zp[2]?.id, 'Perd. P1');
+        mkMatch(t.id, 'zonas', letter, 2, null, zp[2]?.id, `Gan.${letter}1/${letter}2`);
+        mkMatch(t.id, 'zonas', letter, 3, null, zp[2]?.id, `Perd.${letter}1/${letter}2`);
+      }
+    } else if (size === 4) {
+      // FAP zone-of-4 format:
+      // M1: P1 vs P4 (top vs bottom, simultaneous with M2)
+      // M2: P2 vs P3 (middle two)
+      // M3: Winner M1 vs Winner M2 → 1st & 2nd place (both qualify)
+      // M4: Loser M1 vs Loser M2 → 3rd place qualifies, 4th eliminated
+      if (zp.length >= 4) {
+        mkMatch(t.id, 'zonas', letter, 1, zp[0]?.id, zp[3]?.id);
+        mkMatch(t.id, 'zonas', letter, 2, zp[1]?.id, zp[2]?.id);
+        mkMatch(t.id, 'zonas', letter, 3, null, null, `Gan.${letter}1/${letter}4`, `Gan.${letter}2/${letter}3`);
+        mkMatch(t.id, 'zonas', letter, 4, null, null, `Perd.${letter}1/${letter}4`, `Perd.${letter}2/${letter}3`);
       }
     } else {
-      // Round robin for 4 pairs (6 matches)
+      // Round robin fallback for other sizes
       let mn = 1;
       for (let i = 0; i < zp.length; i++)
         for (let j = i+1; j < zp.length; j++)
@@ -1269,11 +1294,11 @@ function genZoneMatches(t, sh) {
   }
 }
 
-function mkMatch(tId, phase, zone, matchNum, p1Id, p2Id, pair1Label) {
+function mkMatch(tId, phase, zone, matchNum, p1Id, p2Id, pair1Label, pair2Label) {
   db.matches.push({
     id: uid(), tId, phase, zone, matchNum,
     p1Id: p1Id||null, p2Id: p2Id||null,
-    p1Label: pair1Label||null, p2Label: null,
+    p1Label: pair1Label||null, p2Label: pair2Label||null,
     sets: [[null,null],[null,null],[null,null]],
     winner: null,
   });
@@ -1392,9 +1417,12 @@ function pdfZones(tId) {
                   : (t.playSlots && t.playSlots[L.charCodeAt(0)-65]) || null;
     const dayStr = slot?.day ? formatDay(slot.day) : '';
 
+    const pairCount = zone.pairs.length;
     let matchLabels;
-    if (t.ppz === 3) {
-      matchLabels = [`${L}1 vs ${L}2`, `${L}1 vs ${L}3`, `${L}2 vs ${L}3`];
+    if (pairCount === 3) {
+      matchLabels = [`${L}1 vs ${L}2`, `Gan.(${L}1/${L}2) vs ${L}3`, `Perd.(${L}1/${L}2) vs ${L}3`];
+    } else if (pairCount === 4) {
+      matchLabels = [`${L}1 vs ${L}4`, `${L}2 vs ${L}3`, `Gan.(1/4) vs Gan.(2/3)`, `Perd.(1/4) vs Perd.(2/3)`];
     } else {
       matchLabels = [];
       for (let i=0;i<zone.pairs.length;i++)
@@ -1580,7 +1608,7 @@ function viewAdminScores() {
         ${zones.map((zone) => {
           const matches = zoneMatches(t.id, zone.letter).sort((a,b)=>a.matchNum-b.matchNum);
           const stand = standings(zone.pairs, matches);
-          const ppz = t.ppz;
+          const ppz = zone.pairs.length;
           const zSched = getZoneSchedule(t, zone.letter);
 
           return `
@@ -1605,13 +1633,16 @@ function viewAdminScores() {
                   const L = zone.letter;
                   let matchLabel;
                   if (ppz === 3) {
-                    const p1tag = m.p1Id ? (zone.pairs.find(p=>p.id===m.p1Id) ? `${L}${zone.pairs.find(p=>p.id===m.p1Id).pos}` : '?') : (m.p1Label||'?');
-                    const p2tag = m.p2Id ? (zone.pairs.find(p=>p.id===m.p2Id) ? `${L}${zone.pairs.find(p=>p.id===m.p2Id).pos}` : '?') : '?';
                     matchLabel = mi===0 ? `${L}1 vs ${L}2` : mi===1 ? `Gan.(${L}1/${L}2) vs ${L}3` : `Perd.(${L}1/${L}2) vs ${L}3`;
+                  } else if (ppz === 4) {
+                    if (mi===0) matchLabel = `${L}1 vs ${L}4`;
+                    else if (mi===1) matchLabel = `${L}2 vs ${L}3`;
+                    else if (mi===2) matchLabel = `Gan.(${L}1/${L}4) vs Gan.(${L}2/${L}3)`;
+                    else matchLabel = `Perd.(${L}1/${L}4) vs Perd.(${L}2/${L}3)`;
                   } else {
-                    const p1tag = m.p1Id && zone.pairs.find(p=>p.id===m.p1Id) ? `${L}${zone.pairs.find(p=>p.id===m.p1Id).pos}` : '?';
-                    const p2tag = m.p2Id && zone.pairs.find(p=>p.id===m.p2Id) ? `${L}${zone.pairs.find(p=>p.id===m.p2Id).pos}` : '?';
-                    matchLabel = `${p1tag} vs ${p2tag}`;
+                    const lp1 = m.p1Id && zone.pairs.find(p=>p.id===m.p1Id) ? `${L}${zone.pairs.find(p=>p.id===m.p1Id).pos}` : (m.p1Label||'?');
+                    const lp2 = m.p2Id && zone.pairs.find(p=>p.id===m.p2Id) ? `${L}${zone.pairs.find(p=>p.id===m.p2Id).pos}` : (m.p2Label||'?');
+                    matchLabel = `${lp1} vs ${lp2}`;
                   }
                   const matchTime = getMatchTime(t, zone.letter, mi);
                   const scoreText = m.winner
@@ -1686,13 +1717,35 @@ function setScore(matchId, setIdx, side, value) {
   });
   m.winner = p1s>=2?'p1':p2s>=2?'p2':null;
 
-  // For 3-pair zones: after match 1 is done, set pair1 for matches 2 & 3
-  if (m.phase==='zonas' && m.matchNum===1 && m.winner) {
+  // After zone match 1 is done, propagate results to dependent matches
+  if (m.phase==='zonas' && m.winner) {
     const zm = db.matches.filter(x=>x.tId===m.tId&&x.zone===m.zone&&x.phase==='zonas').sort((a,b)=>a.matchNum-b.matchNum);
+    const m1 = zm.find(x=>x.matchNum===1);
     const m2 = zm.find(x=>x.matchNum===2);
     const m3 = zm.find(x=>x.matchNum===3);
-    if (m2) m2.p1Id = m.winner==='p1' ? m.p1Id : m.p2Id;
-    if (m3) m3.p1Id = m.winner==='p1' ? m.p2Id : m.p1Id;
+    const m4 = zm.find(x=>x.matchNum===4);
+
+    // 3-pair zone: after match 1, populate p1Id for matches 2 & 3
+    if (m.matchNum===1 && m3 && !m4) {
+      if (m2) m2.p1Id = m.winner==='p1' ? m.p1Id : m.p2Id;
+      if (m3) m3.p1Id = m.winner==='p1' ? m.p2Id : m.p1Id;
+    }
+
+    // 4-pair zone: after BOTH matches 1 and 2 are done, populate matches 3 & 4
+    if ((m.matchNum===1 || m.matchNum===2) && m3 && m4) {
+      if (m1?.winner && m2?.winner) {
+        // Match 3: winners of M1 and M2 face each other (1st vs 2nd)
+        m3.p1Id = m1.winner==='p1' ? m1.p1Id : m1.p2Id;
+        m3.p2Id = m2.winner==='p1' ? m2.p1Id : m2.p2Id;
+        m3.p1Label = null;
+        m3.p2Label = null;
+        // Match 4: losers of M1 and M2 face each other (3rd vs 4th)
+        m4.p1Id = m1.winner==='p1' ? m1.p2Id : m1.p1Id;
+        m4.p2Id = m2.winner==='p1' ? m2.p2Id : m2.p1Id;
+        m4.p1Label = null;
+        m4.p2Label = null;
+      }
+    }
   }
 
   saveDB();
