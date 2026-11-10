@@ -1952,14 +1952,39 @@ const BRACKET_PHASE_MAP = {
   32: { prev:'16avos',  main:'8avos'   },
 };
 
-// FAP predefined bracket templates keyed by number of classified pairs.
-// Each array lists bracket slots top→bottom: "rankZone" (e.g. "1A"=1st of zone A).
-// Positions 0 and last (when nByes=2) are top seeds that skip the previa.
-// Source: FAP Reglamento de Torneos – bracket draw tables.
+// FAP predefined bracket templates.
+// Key: `${nClassifiers}_${nThirds}` (nThirds = count of 3rd-place classifiers, i.e. zones of 4 pairs).
+// slots: bracket positions top→bottom ["rankZone"], e.g. "1A"=1st of zone A, "3B"=3rd of zone B.
+// byeIdx: indices into slots[] that skip the previa (get byes), stored in rank order
+//         (best bye first) so advanceBracket places them correctly via generateBracketSeedOrder.
+// Source: FAP Reglamento de Torneos – bracket draw tables (pp. 124-145).
 const FAP_BRACKET_TEMPLATES = {
-  6:  ['1A','2B','2C','1C','2A','1B'],           // 9 total pairs  (nByes=2 → semis)
-  8:  ['1A','2B','2C','1D','1C','2D','2A','1B'],  // 12 total pairs (nByes=0 → cuartos)
-  14: ['1A','2C','2F','1E','2B','3A','1D','1C','3B','2A','1F','2E','2D','1B'], // 20 pairs (nByes=2 → 8avos)
+  // ── 4 classifiers (6 total pairs – 2 zones of 3) ──────────── nByes=0, semis ──
+  '4_0': { slots:['1A','2B','2A','1B'], byeIdx:[] },
+
+  // ── 5 classifiers (7 total pairs – 1 zone of 4 + 1 zone of 3) ─ nByes=3, semis ─
+  '5_1': { slots:['1A','3A','2B','2A','1B'], byeIdx:[0,3,4] },
+  // byes: 1A(rank1), 2A(rank2), 1B(rank3)  |  previa: 3A vs 2B → winner plays 1A
+
+  // ── 6 classifiers (9 total pairs – 3 zones of 3) ─────────── nByes=2, semis ──
+  '6_0': { slots:['1A','2B','2C','1C','2A','1B'], byeIdx:[0,5] },
+  // byes: 1A, 1B  |  previa (cuartos): 2B vs 2C, 1C vs 2A
+
+  // ── 8 classifiers – no thirds (12 total pairs – 4 zones of 3) ─ nByes=0, cuartos ─
+  '8_0': { slots:['1A','2B','2C','1D','1C','2D','2A','1B'], byeIdx:[] },
+
+  // ── 8 classifiers – 2 thirds (11 total pairs – 2 zones of 4 + 1 zone of 3) ─ nByes=0 ─
+  '8_2': { slots:['1A','3B','2B','2C','1C','2A','3A','1B'], byeIdx:[] },
+
+  // ── 10 classifiers (14 total pairs – 2 zones of 4 + 2 zones of 3) ─ nByes=6, 8avos ─
+  '10_2': { slots:['1A','3A','2B','2C','1D','1C','2D','2A','3B','1B'],
+            byeIdx:[0,9,5,4,3,6] },
+  // byes rank order: 1A,1B,1C,1D,2C,2D  |  previa(8avos): 3A vs 2B, 2A vs 3B
+
+  // ── 14 classifiers (20 total pairs – 2 zones of 4 + 4 zones of 3) ─ nByes=2, 8avos ─
+  '14_2': { slots:['1A','2C','2F','1E','2B','3A','1D','1C','3B','2A','1F','2E','2D','1B'],
+             byeIdx:[0,13] },
+  // byes: 1A, 1B  |  previa(8avos): 2C/2F, 1E/2B, 3A/1D, 1C/3B, 2A/1F, 2E/2D
 };
 
 // Standard tournament bracket seeding order for n slots (top-to-bottom).
@@ -2015,24 +2040,24 @@ function genInitialBracket() {
   const firstPhase = phMap.prev;
   const mainSlots  = bSize / 2;
   const seedLabel  = c => `${c.zone}${c.rank}`;
-  const fapTpl     = FAP_BRACKET_TEMPLATES[n];
+  const nThirds    = classif.filter(c => c.rank === 3).length;
+  const tplKey     = `${n}_${nThirds}`;
+  const fapTpl     = FAP_BRACKET_TEMPLATES[tplKey];
   let mn = 0;
 
-  if (fapTpl && (nByes === 0 || nByes === 2)) {
+  if (fapTpl) {
     // ── FAP predefined bracket ──────────────────────────────────────────────
     // Build lookup "1A" → classif entry
     const bySlot = {};
     classif.forEach(c => { bySlot[`${c.rank}${c.zone}`] = c; });
-    const slots = fapTpl.map(s => bySlot[s] || null);
+    const slots = fapTpl.slots.map(s => bySlot[s] || null);
+    const byeSet = new Set(fapTpl.byeIdx);
 
-    // Byes: first slot (1A) and last slot (1B) skip the previa
-    const byeEntries = nByes === 2 ? [slots[0], slots[n - 1]].filter(Boolean) : [];
-    const previaSlots = nByes === 2 ? slots.slice(1, n - 1) : slots;
+    // byePairs in rank order (byeIdx order) for advanceBracket slot placement
+    const orderedByePairs = fapTpl.byeIdx
+      .map(i => slots[i]).filter(Boolean)
+      .map(c => ({ id:c.pair.id, label:pairLabel(c.pair), seed:seedLabel(c) }));
 
-    // bracketInfo for advanceBracket
-    const orderedByePairs = byeEntries.map(c => ({
-      id: c.pair.id, label: pairLabel(c.pair), seed: seedLabel(c),
-    }));
     t.bracketInfo = {
       previaPhase: nByes > 0 ? firstPhase : null,
       mainPhase:   phMap.main,
@@ -2040,7 +2065,8 @@ function genInitialBracket() {
       byePairs: orderedByePairs,
     };
 
-    // Create previa (8avos) matches in FAP order: adjacent pairs in template
+    // Create previa matches in FAP order: adjacent non-bye slots pair up
+    const previaSlots = slots.filter((_, i) => !byeSet.has(i));
     for (let i = 0; i + 1 < previaSlots.length; i += 2) {
       const a = previaSlots[i], b = previaSlots[i + 1];
       if (!a || !b) continue;
