@@ -461,7 +461,7 @@ function viewResults() {
 
 function publicZoneCard(t, zone) {
   const matches = zoneMatches(t.id, zone.letter);
-  const stand = standings(zone.pairs, matches);
+  const stand = standingsForZone(zone.pairs, matches);
   const zSched = getZoneSchedule(t, zone.letter);
   return `
     <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -476,9 +476,11 @@ function publicZoneCard(t, zone) {
             <th class="text-center pb-1.5">DJ</th>
           </tr></thead>
           <tbody>
-            ${stand.map((s,i) => `
-              <tr style="${i<2?'background:#FDEDF1':''}" class="${i<2?'font-semibold':''}">
-                <td class="py-1.5 pl-1">${i<2?'✅':''} ${i+1}</td>
+            ${(() => {
+              const qN = zone.pairs.length === 4 ? 3 : 2;
+              return stand.map((s,i) => `
+              <tr style="${i<qN?'background:#FDEDF1':''}" class="${i<qN?'font-semibold':''}">
+                <td class="py-1.5 pl-1">${i<qN?'✅':''} ${i+1}</td>
                 <td class="py-1.5">
                   <span class="inline-block px-1.5 rounded text-xs font-bold mr-1" style="background:#edfad0;color:#3d6600">
                     ${zone.letter}${s.pair.pos}
@@ -488,7 +490,8 @@ function publicZoneCard(t, zone) {
                 <td class="text-center py-1.5">${s.pg}</td>
                 <td class="text-center py-1.5">${s.sg-s.sp}</td>
                 <td class="text-center py-1.5">${s.jg-s.jp}</td>
-              </tr>`).join('')}
+              </tr>`).join('');
+            })()}
           </tbody>
         </table>
       </div>
@@ -1463,7 +1466,7 @@ function pdfZones(tId) {
       <div class="page-subtitle">FIXTURE DE ZONAS · FASE CLASIFICATORIA</div>
       <div class="zones-grid">${zonesHtml}</div>
     </div>
-    <div class="footer-note">DESEMPATE: Empate 1-1 en sets → Super Tiebreak a 11 puntos. Clasifican las 2 mejores parejas de cada zona.<br>Criterio: 1° Puntos | 2° Diferencia de Sets | 3° Diferencia de Juegos</div>
+    <div class="footer-note">DESEMPATE: Empate 1-1 en sets → Super Tiebreak a 11 puntos. Clasifican las 2 mejores parejas de zonas de 3 y las 3 mejores de zonas de 4.<br>Criterio (zona de 4): 1° Ganador de M3 | 2° Perdedor de M3 | 3° Ganador de M4 | 4° Perdedor de M4</div>
   </body></html>`);
 }
 
@@ -1607,8 +1610,9 @@ function viewAdminScores() {
       <div class="space-y-5">
         ${zones.map((zone) => {
           const matches = zoneMatches(t.id, zone.letter).sort((a,b)=>a.matchNum-b.matchNum);
-          const stand = standings(zone.pairs, matches);
+          const stand = standingsForZone(zone.pairs, matches);
           const ppz = zone.pairs.length;
+          const qualifyN = ppz === 4 ? 3 : 2;
           const zSched = getZoneSchedule(t, zone.letter);
 
           return `
@@ -1695,7 +1699,7 @@ function viewAdminScores() {
                 <div class="text-xs font-bold text-gray-600 uppercase mb-2">Posiciones</div>
                 ${stand.map((s,i) => `
                   <div class="flex items-center gap-2 text-xs py-0.5">
-                    <span class="w-5 font-bold ${i<2?'text-green-600':'text-gray-600'}">${i+1}°</span>
+                    <span class="w-5 font-bold ${i<qualifyN?'text-green-600':'text-gray-600'}">${i+1}°</span>
                     <span class="font-medium text-gray-700">${s.pair.p1.split(' ')[0]} / ${s.pair.p2.split(' ')[0]}</span>
                     <span class="ml-auto text-gray-600">PG:${s.pg} DS:${s.sg-s.sp} DJ:${s.jg-s.jp}</span>
                   </div>`).join('')}
@@ -1764,13 +1768,15 @@ function viewAdminBracket() {
   const zones = getZones(t.id);
   const bm = db.matches.filter(m=>m.tId===t.id && m.phase!=='zonas');
 
-  // Collect zone 1st and 2nd place
+  // Collect zone classifieds: top 2 from zones-of-3, top 3 from zones-of-4
   const classif = [];
   zones.forEach(zone => {
     const ms = zoneMatches(t.id, zone.letter);
-    const stand = standings(zone.pairs, ms);
+    const stand = standingsForZone(zone.pairs, ms);
+    const qualifyN = zone.pairs.length === 4 ? 3 : 2;
     if (stand[0]) classif.push({ rank:1, zone:zone.letter, pair:stand[0].pair });
     if (stand[1]) classif.push({ rank:2, zone:zone.letter, pair:stand[1].pair });
+    if (qualifyN >= 3 && stand[2]) classif.push({ rank:3, zone:zone.letter, pair:stand[2].pair });
   });
 
   // Bracket state analysis
@@ -1793,7 +1799,8 @@ function viewAdminBracket() {
         // Compute seeding & bye info for display
         const _firsts  = classif.filter(c=>c.rank===1);
         const _seconds = classif.filter(c=>c.rank===2);
-        const _seeded  = [..._firsts, ..._seconds];
+        const _thirds  = classif.filter(c=>c.rank===3);
+        const _seeded  = [..._firsts, ..._seconds, ..._thirds];
         const _n       = _seeded.length;
         const _bSize   = nextPow2(_n);
         const _nByes   = _bSize - _n;
@@ -1950,7 +1957,7 @@ function genInitialBracket() {
   const firsts = [];
   zones.forEach(zone => {
     const ms = zoneMatches(t.id, zone.letter);
-    const stand = standings(zone.pairs, ms);
+    const stand = standingsForZone(zone.pairs, ms);
     if (stand[0]) firsts.push({ rank:1, zone:zone.letter, pair:stand[0].pair });
   });
 
@@ -1961,7 +1968,7 @@ function genInitialBracket() {
   const rawSeconds = [];
   zones.forEach(zone => {
     const ms2 = zoneMatches(t.id, zone.letter);
-    const st2  = standings(zone.pairs, ms2);
+    const st2  = standingsForZone(zone.pairs, ms2);
     if (st2[1]) rawSeconds.push({ rank:2, zone:zone.letter, pair:st2[1].pair });
   });
   const nF = firsts.length;
@@ -1984,12 +1991,21 @@ function genInitialBracket() {
     // Fallback: original Z→A order
     [...zones].reverse().forEach(zone => {
       const ms2 = zoneMatches(t.id, zone.letter);
-      const st2  = standings(zone.pairs, ms2);
+      const st2  = standingsForZone(zone.pairs, ms2);
       if (st2[1]) seconds.push({ rank:2, zone:zone.letter, pair:st2[1].pair });
     });
   }
 
-  const seeded = [...firsts, ...seconds]; // seeds 1..n in rank order
+  // Zone thirds — only from zones of 4 pairs (3 qualifiers)
+  const thirds = [];
+  zones.forEach(zone => {
+    if (zone.pairs.length !== 4) return;
+    const ms3 = zoneMatches(t.id, zone.letter);
+    const st3 = standingsForZone(zone.pairs, ms3);
+    if (st3[2]) thirds.push({ rank:3, zone:zone.letter, pair:st3[2].pair });
+  });
+
+  const seeded = [...firsts, ...seconds, ...thirds]; // seeds 1..n in rank order
   if (seeded.length < 2) { alert('Necesitás al menos 2 parejas clasificadas'); return; }
 
   db.matches = db.matches.filter(m=>!(m.tId===t.id && m.phase!=='zonas'));
@@ -2207,6 +2223,32 @@ function getZones(tId) {
 
 function zoneMatches(tId, zone) {
   return db.matches.filter(m=>m.tId===tId && m.zone===zone && m.phase==='zonas');
+}
+
+// For zone-of-4: determine positions from bracket match outcomes (M3 winner=1st,
+// M3 loser=2nd, M4 winner=3rd, M4 loser=4th). Falls back to PG-based standings
+// for incomplete zones or zones-of-3.
+function standingsForZone(pairs, matches) {
+  if (pairs.length !== 4) return standings(pairs, matches);
+  const m3 = matches.find(m => m.matchNum === 3);
+  const m4 = matches.find(m => m.matchNum === 4);
+  if (m3?.winner && m4?.winner) {
+    const getP = (m, side) => side === 'p1' ? m.p1Id : m.p2Id;
+    const ids = [
+      getP(m3, m3.winner),          // 1st: winner of M3
+      getP(m3, m3.winner==='p1'?'p2':'p1'), // 2nd: loser of M3
+      getP(m4, m4.winner),          // 3rd: winner of M4
+      getP(m4, m4.winner==='p1'?'p2':'p1'), // 4th: loser of M4
+    ];
+    const result = ids.map(id => {
+      const pair = pairs.find(p => p.id === id);
+      return pair ? { pair, pg:0, pp:0, sg:0, sp:0, jg:0, jp:0 } : null;
+    }).filter(Boolean);
+    // Add any pair not yet ranked (matches not played)
+    pairs.forEach(p => { if (!result.find(r => r.pair.id === p.id)) result.push({ pair:p, pg:0, pp:0, sg:0, sp:0, jg:0, jp:0 }); });
+    return result;
+  }
+  return standings(pairs, matches);
 }
 
 function standings(pairs, matches) {
