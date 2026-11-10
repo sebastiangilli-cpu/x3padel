@@ -2253,33 +2253,10 @@ function zoneMatches(tId, zone) {
 // For zone-of-4: determine positions from bracket match outcomes (M3 winner=1st,
 // M3 loser=2nd, M4 winner=3rd, M4 loser=4th). Falls back to PG-based standings
 // for incomplete zones or zones-of-3.
-function standingsForZone(pairs, matches) {
-  if (pairs.length !== 4) return standings(pairs, matches);
-  const m3 = matches.find(m => m.matchNum === 3);
-  const m4 = matches.find(m => m.matchNum === 4);
-  if (m3?.winner && m4?.winner) {
-    const getP = (m, side) => side === 'p1' ? m.p1Id : m.p2Id;
-    const ids = [
-      getP(m3, m3.winner),          // 1st: winner of M3
-      getP(m3, m3.winner==='p1'?'p2':'p1'), // 2nd: loser of M3
-      getP(m4, m4.winner),          // 3rd: winner of M4
-      getP(m4, m4.winner==='p1'?'p2':'p1'), // 4th: loser of M4
-    ];
-    const result = ids.map(id => {
-      const pair = pairs.find(p => p.id === id);
-      return pair ? { pair, pg:0, pp:0, sg:0, sp:0, jg:0, jp:0 } : null;
-    }).filter(Boolean);
-    // Add any pair not yet ranked (matches not played)
-    pairs.forEach(p => { if (!result.find(r => r.pair.id === p.id)) result.push({ pair:p, pg:0, pp:0, sg:0, sp:0, jg:0, jp:0 }); });
-    return result;
-  }
-  return standings(pairs, matches);
-}
-
-function standings(pairs, matches) {
+// Compute raw stats (pg, sg, sp, jg, jp) for each pair from match results
+function computeStats(pairs, matches) {
   const st = {};
   pairs.forEach(p => { st[p.id] = { pair:p, pg:0, pp:0, sg:0, sp:0, jg:0, jp:0 }; });
-
   matches.forEach(m => {
     if (!m.winner) return;
     let sg1=0,sg2=0,jg1=0,jp1=0,jg2=0,jp2=0;
@@ -2289,23 +2266,58 @@ function standings(pairs, matches) {
       if (a>b) { sg1++; jg1+=a; jp1+=b; }
       else if (b>a) { sg2++; jg2+=b; jp2+=a; }
     });
-
-    if (st[m.p1Id]) {
-      const s=st[m.p1Id];
-      if(m.winner==='p1')s.pg++;else s.pp++;
-      s.sg+=sg1;s.sp+=sg2;s.jg+=jg1;s.jp+=jp1;
-    }
-    if (st[m.p2Id]) {
-      const s=st[m.p2Id];
-      if(m.winner==='p2')s.pg++;else s.pp++;
-      s.sg+=sg2;s.sp+=sg1;s.jg+=jg2;s.jp+=jp2;
-    }
+    if (st[m.p1Id]) { const s=st[m.p1Id]; if(m.winner==='p1')s.pg++;else s.pp++; s.sg+=sg1;s.sp+=sg2;s.jg+=jg1;s.jp+=jp1; }
+    if (st[m.p2Id]) { const s=st[m.p2Id]; if(m.winner==='p2')s.pg++;else s.pp++; s.sg+=sg2;s.sp+=sg1;s.jg+=jg2;s.jp+=jp2; }
   });
+  return st;
+}
 
-  return Object.values(st).sort((a,b) => {
-    if (b.pg!==a.pg) return b.pg-a.pg;
-    if ((b.sg-b.sp)!==(a.sg-a.sp)) return (b.sg-b.sp)-(a.sg-a.sp);
-    return (b.jg-b.jp)-(a.jg-a.jp);
+// For zone-of-4: positions are determined by bracket outcomes (M3/M4), stats shown for info
+function standingsForZone(pairs, matches) {
+  if (pairs.length !== 4) return standings(pairs, matches);
+  const m3 = matches.find(m => m.matchNum === 3);
+  const m4 = matches.find(m => m.matchNum === 4);
+  // Compute actual stats for display (even when bracket order is known)
+  const st = computeStats(pairs, matches);
+  if (m3?.winner && m4?.winner) {
+    const getP = (m, side) => side === 'p1' ? m.p1Id : m.p2Id;
+    const ids = [
+      getP(m3, m3.winner),                    // 1st: winner of M3
+      getP(m3, m3.winner==='p1'?'p2':'p1'),   // 2nd: loser of M3
+      getP(m4, m4.winner),                    // 3rd: winner of M4
+      getP(m4, m4.winner==='p1'?'p2':'p1'),   // 4th: loser of M4
+    ];
+    const result = ids.map(id => st[id] || null).filter(Boolean);
+    // Add unranked pairs (matches not yet played)
+    pairs.forEach(p => { if (!result.find(r => r.pair.id === p.id)) result.push(st[p.id] || { pair:p, pg:0, pp:0, sg:0, sp:0, jg:0, jp:0 }); });
+    return result;
+  }
+  // Bracket not complete: fall back to PG-based order (with head-to-head)
+  return standings(pairs, matches);
+}
+
+function standings(pairs, matches) {
+  const st = computeStats(pairs, matches);
+  const list = Object.values(st);
+
+  // Head-to-head tiebreaker: when two pairs are tied on PG, the one who beat
+  // the other directly ranks higher.
+  function headToHead(a, b) {
+    const direct = matches.find(m =>
+      m.winner && ((m.p1Id===a.pair.id && m.p2Id===b.pair.id) || (m.p1Id===b.pair.id && m.p2Id===a.pair.id))
+    );
+    if (!direct) return 0;
+    if ((direct.p1Id===a.pair.id && direct.winner==='p1') || (direct.p2Id===a.pair.id && direct.winner==='p2')) return -1;
+    return 1;
+  }
+
+  return list.sort((a,b) => {
+    if (b.pg !== a.pg) return b.pg - a.pg;
+    // Tied on PG: 1) head-to-head, 2) set diff, 3) game diff
+    const h2h = headToHead(a, b);
+    if (h2h !== 0) return h2h;
+    if ((b.sg-b.sp) !== (a.sg-a.sp)) return (b.sg-b.sp) - (a.sg-a.sp);
+    return (b.jg-b.jp) - (a.jg-a.jp);
   });
 }
 
