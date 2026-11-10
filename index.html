@@ -529,14 +529,19 @@ function publicZoneCard(t, zone) {
             const p2tag = pair2 ? `${pair2.zone}${pair2.pos}` : null;
             const sc = m.sets.filter(([a,b])=>a!==null&&b!==null&&a!==''&&b!=='').map(([a,b])=>`${a}-${b}`).join(' ');
             const mt = getMatchTime(t, zone.letter, mi);
-            const lbl1 = p1tag || m.p1Label || '?';
-            const lbl2 = p2tag || '?';
-            return `<div class="text-xs py-0.5 flex gap-1.5 items-center">
-              ${mt?`<span class="font-bold text-gray-600 w-12 flex-shrink-0">${mt}hs</span>`:''}
-              <span class="font-bold flex-shrink-0 px-1 rounded ${m.winner==='p1'?'text-white':'text-[#3d6600]'}" style="background:${m.winner==='p1'?'#1A2500':'#edfad0'}">${lbl1}</span>
-              <span class="text-gray-500 flex-shrink-0">${sc||'vs'}</span>
-              <span class="font-bold flex-shrink-0 px-1 rounded ${m.winner==='p2'?'text-white':'text-[#3d6600]'}" style="background:${m.winner==='p2'?'#1A2500':'#edfad0'}">${lbl2}</span>
-              ${m.photo?`<button onclick="openPhotoViewer('${m.id}')" class="ml-auto text-sm leading-none flex-shrink-0" title="Ver foto del partido">📷</button>`:''}
+            return `<div class="text-xs py-1 flex flex-col gap-0.5">
+              ${mt?`<div class="flex items-center gap-1 text-gray-500 mb-0.5"><span class="font-bold">${mt}hs</span></div>`:''}
+              <div class="flex items-center gap-1.5">
+                <span class="font-bold ${m.winner==='p1'?'text-white':'text-gray-700'} px-1.5 py-0.5 rounded flex-shrink-0 text-xs" style="background:${m.winner==='p1'?'#1A2500':'#f3f4f6'};min-width:16px;text-align:center;">${p1tag||'?'}</span>
+                <span class="flex-1 font-${m.winner==='p1'?'bold':'normal'} truncate" style="color:${m.winner==='p1'?'#1A2500':m.winner==='p2'?'#9ca3af':'#374151'}">${p1n}</span>
+                <span class="font-bold text-gray-500 flex-shrink-0">${sc ? sc.split(' ').map(s=>s.split('-')[0]).join(' ') : '—'}</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="font-bold ${m.winner==='p2'?'text-white':'text-gray-700'} px-1.5 py-0.5 rounded flex-shrink-0 text-xs" style="background:${m.winner==='p2'?'#1A2500':'#f3f4f6'};min-width:16px;text-align:center;">${p2tag||'?'}</span>
+                <span class="flex-1 font-${m.winner==='p2'?'bold':'normal'} truncate" style="color:${m.winner==='p2'?'#1A2500':m.winner==='p1'?'#9ca3af':'#374151'}">${p2n}</span>
+                <span class="font-bold text-gray-500 flex-shrink-0">${sc ? sc.split(' ').map(s=>s.split('-')[1]).join(' ') : '—'}</span>
+              </div>
+              ${m.photo?`<button onclick="openPhotoViewer('${m.id}')" class="text-xs text-blue-500 mt-0.5 self-end">📷 Ver foto</button>`:''}
             </div>`;
           }).join('')}
       </div>
