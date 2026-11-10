@@ -581,21 +581,15 @@ const PHASE_COLORS = {
 };
 
 function publicBracket(t, bm, champion) {
-  const ORDER = ['16avos','8avos','cuartos','semis','final'];
-  const phases = ORDER.filter(ph => bm.some(m=>m.phase===ph));
-  // Only show phases where every non-BYE match has a matchDay assigned
-  const visiblePhases = phases.filter(ph => {
-    const real = bm.filter(m=>m.phase===ph && m.p2Label !== 'BYE');
-    return real.length > 0 && real.every(m=>m.matchDay);
-  });
-  if (visiblePhases.length === 0) {
+  const hasBracket = bm.some(m => BRACKET_ORDER.includes(m.phase));
+  if (!hasBracket) {
     return `
       <div class="mt-6">
         <h3 class="text-xl font-bold text-gray-800 mb-4">🏆 Bracket Final</h3>
         <div class="bg-white rounded-2xl border border-gray-100 p-6 text-center">
           <div class="text-3xl mb-2">📅</div>
-          <div class="text-sm font-semibold text-gray-700 mb-1">Horarios pendientes</div>
-          <div class="text-xs text-gray-500">Los cruces del bracket se publicarán una vez que se confirmen los días y horarios de cada partido.</div>
+          <div class="text-sm font-semibold text-gray-700 mb-1">Bracket pendiente</div>
+          <div class="text-xs text-gray-500">El bracket se publicará una vez que finalicen las zonas.</div>
         </div>
       </div>`;
   }
@@ -603,36 +597,19 @@ function publicBracket(t, bm, champion) {
     <div class="mt-6">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-xl font-bold text-gray-800">🏆 Bracket Final</h3>
-        <button onclick="pdfBracket('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:scale-95 transition-all" title="Descargar PDF del bracket">
-          📄 Descargar PDF
+        <button onclick="pdfBracket('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:scale-95 transition-all">
+          📄 PDF
         </button>
       </div>
-      <div class="space-y-6">
-        ${visiblePhases.map(ph => {
-          const phMatches = bm.filter(m=>m.phase===ph).sort((a,b)=>a.matchNum-b.matchNum);
-          const phDone = phMatches.every(m=>m.winner);
-          return `
-            <div>
-              <div class="flex items-center gap-2 mb-3">
-                <span class="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full text-white" style="background:${PHASE_COLORS[ph]||'#6b7280'}">${BRACKET_NAMES[ph]||ph}</span>
-                ${phDone?`<span class="text-xs font-bold" style="color:#ef4444">✓ Ronda completa</span>`:''}
-              </div>
-              <div class="grid sm:grid-cols-2 gap-3">
-                ${phMatches.map((m,mi) => `
-                  <div>
-                    <div class="flex items-center gap-2 mb-1.5">
-                      <span class="text-xs text-gray-600 font-medium">Cruce ${mi+1}</span>
-                      ${m.photo?`<button onclick="openPhotoViewer('${m.id}')" class="text-sm leading-none ml-auto" title="Ver foto del partido">📷 Foto</button>`:''}
-                    </div>
-                    ${bracketMatchCard(m, ph)}
-                  </div>`).join('')}
-              </div>
-            </div>`;
-        }).join('')}
-        ${phases.length > visiblePhases.length ? `
-          <div class="text-center py-3 text-xs text-gray-500 italic">
-            📅 Los horarios de las próximas rondas se publicarán cuando estén confirmados.
-          </div>` : ''}
+      <div class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style="background:#fafafa;">
+        <div style="padding:12px 8px 4px 12px;">
+          ${renderBracketVisual(t, bm, [], true)}
+        </div>
+        ${bm.filter(m=>BRACKET_ORDER.includes(m.phase)&&m.photo).map(m=>`
+          <div class="border-t border-gray-100 px-4 py-2 flex items-center gap-3 bg-white">
+            <span class="text-xs text-gray-500">${BRACKET_NAMES[m.phase]||m.phase} #${m.matchNum}</span>
+            <button onclick="openPhotoViewer('${m.id}')" class="text-xs font-bold text-blue-600 hover:underline ml-auto">📷 Ver foto</button>
+          </div>`).join('')}
       </div>
     </div>`;
 }
@@ -1799,7 +1776,7 @@ function bvRow(m, side) {
   </div>`;
 }
 
-function renderBracketVisual(t, bm, unlockedPhases) {
+function renderBracketVisual(t, bm, unlockedPhases, readOnly) {
   const bi          = t.bracketInfo || {};
   const byePairs    = bi.byePairs   || [];
   const previaPhase = bi.previaPhase;
@@ -1871,7 +1848,7 @@ function renderBracketVisual(t, bm, unlockedPhases) {
       if (slot.type === 'match') {
         const m = slot.data;
         const isByeMatch = m.p2Label === 'BYE';
-        const canEnter   = !isLocked && !isByeMatch && m.p1Label && m.p2Label;
+        const canEnter   = !readOnly && !isLocked && !isByeMatch && m.p1Label && m.p2Label;
         html += `<div style="height:${itemH}px;display:flex;align-items:center;padding:3px 6px 3px 2px;box-sizing:border-box;">
           <div onclick="${canEnter?`openScoreModal('${m.id}',true)`:''}" style="width:100%;border-radius:12px;overflow:hidden;border:1.5px solid ${m.winner?'#c6f6d5':'#e5e7eb'};background:white;box-shadow:0 1px 3px rgba(0,0,0,0.07);${canEnter?'cursor:pointer;':''}">
             ${bvRow(m,'p1')}
