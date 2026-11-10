@@ -1800,28 +1800,49 @@ function bvRow(m, side) {
 }
 
 function renderBracketVisual(t, bm, unlockedPhases) {
-  const bi         = t.bracketInfo || {};
-  const byePairs   = bi.byePairs   || [];
-  const previaPhase= bi.previaPhase;
+  const bi          = t.bracketInfo || {};
+  const byePairs    = bi.byePairs   || [];
+  const previaPhase = bi.previaPhase;
+  const bSize       = bi.bSize;
 
-  const phases = BRACKET_ORDER.filter(ph => bm.some(m => m.phase === ph));
-  if (!phases.length) return '';
+  const bracketMatches = bm.filter(m => BRACKET_ORDER.includes(m.phase));
+  if (!bracketMatches.length && !bSize) return '';
 
-  // Build slot arrays per round
+  // Determine which phases we expect (previa onwards)
+  const phMap        = BRACKET_PHASE_MAP[bSize] || BRACKET_PHASE_MAP[8];
+  const startPhase   = phMap ? phMap.prev : (bracketMatches.length ? bracketMatches.sort((a,b)=>BRACKET_ORDER.indexOf(a.phase)-BRACKET_ORDER.indexOf(b.phase))[0].phase : 'cuartos');
+  const startIdx     = BRACKET_ORDER.indexOf(startPhase);
+  const expectedPhs  = BRACKET_ORDER.slice(startIdx < 0 ? 0 : startIdx); // e.g. ['8avos','cuartos','semis','final']
+
+  // Build slot arrays for every expected phase
   const rounds = [];
-  phases.forEach((ph, ri) => {
-    const matches = bm.filter(m => m.phase === ph).sort((a,b) => a.matchNum - b.matchNum);
-    if (ri === 0 && ph === previaPhase && byePairs.length === 2) {
-      // 2 byes: one at top, one at bottom around the previa matches
-      rounds.push({ phase: ph, slots: [
-        { type:'bye',   data: byePairs[0] },
-        ...matches.map(m => ({ type:'match', data: m })),
-        { type:'bye',   data: byePairs[1] },
-      ]});
+  expectedPhs.forEach(ph => {
+    const matches = bracketMatches.filter(m => m.phase === ph).sort((a,b) => a.matchNum - b.matchNum);
+    if (matches.length > 0) {
+      if (ph === previaPhase && byePairs.length === 2) {
+        rounds.push({ phase: ph, slots: [
+          { type:'bye',   data: byePairs[0] },
+          ...matches.map(m => ({ type:'match', data: m })),
+          { type:'bye',   data: byePairs[1] },
+        ]});
+      } else {
+        rounds.push({ phase: ph, slots: matches.map(m => ({ type:'match', data: m })) });
+      }
     } else {
-      rounds.push({ phase: ph, slots: matches.map(m => ({ type:'match', data: m })) });
+      // Future phase – TBD placeholders: half the previous round's slot count
+      const prevLen = rounds.length > 0 ? rounds[rounds.length-1].slots.length : 2;
+      const nTbd    = Math.max(1, Math.round(prevLen / 2));
+      rounds.push({ phase: ph, slots: Array.from({length: nTbd}, () => ({ type:'tbd' })) });
     }
+    // Stop expanding after we reach 1 slot (the final)
+    if (rounds[rounds.length-1].slots.length === 1 && ph !== expectedPhs[0]) return;
   });
+
+  // Remove trailing TBD-only rounds beyond 'final'
+  while (rounds.length > 1 && rounds[rounds.length-1].slots.every(s=>s.type==='tbd') && rounds[rounds.length-1].phase === 'final') {
+    // keep final even if TBD
+    break;
+  }
 
   const SLOT_H   = 110;
   const maxSlots = Math.max(...rounds.map(r => r.slots.length));
@@ -1830,19 +1851,19 @@ function renderBracketVisual(t, bm, unlockedPhases) {
   const CONN_W   = 32;
   const HDR_H    = 32;
 
-  let html = `<div style="display:flex;overflow-x:auto;padding:0 0 16px;gap:0;min-height:${TOTAL_H+HDR_H+20}px;">`;
+  let html = `<div style="display:flex;overflow-x:auto;padding:0 0 16px 0;gap:0;min-height:${TOTAL_H+HDR_H+20}px;">`;
 
   rounds.forEach(({ phase, slots }, ri) => {
-    const isLastPhase = ri === rounds.length - 1;
-    const isLocked    = !isLastPhase && !(unlockedPhases||[]).includes(phase);
+    const isLastReal  = ri === rounds.filter(r=>r.slots.some(s=>s.type!=='tbd')).length - 1;
+    const isLocked    = !isLastReal && !(unlockedPhases||[]).includes(phase);
     const itemH       = TOTAL_H / slots.length;
 
     html += `<div style="flex:0 0 auto;width:${COL_W}px;display:flex;flex-direction:column;">`;
 
-    // Phase header
+    // Phase header label
     html += `<div style="height:${HDR_H}px;display:flex;align-items:center;gap:5px;padding:0 2px;">
       <span style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;color:${PHASE_COLORS[phase]||'#6b7280'};">${BRACKET_NAMES[phase]||phase}</span>
-      ${!isLastPhase?`<button onclick="toggleBracketPhaseLock('${t.id}','${phase}')" title="${isLocked?'Desbloquear':'Bloquear'}" style="font-size:12px;opacity:0.5;padding:0;background:none;border:none;cursor:pointer;">${isLocked?'🔒':'🔓'}</button>`:''}
+      ${!isLastReal && slots.some(s=>s.type==='match')?`<button onclick="toggleBracketPhaseLock('${t.id}','${phase}')" title="${isLocked?'Desbloquear':'Bloquear'}" style="font-size:12px;opacity:0.5;padding:0;background:none;border:none;cursor:pointer;">${isLocked?'🔒':'🔓'}</button>`:''}
     </div>`;
 
     // Slots
@@ -1869,12 +1890,19 @@ function renderBracketVisual(t, bm, unlockedPhases) {
             </div>
           </div>
         </div>`;
+      } else {
+        // TBD placeholder
+        html += `<div style="height:${itemH}px;display:flex;align-items:center;padding:3px 6px 3px 2px;box-sizing:border-box;">
+          <div style="width:100%;border-radius:12px;border:1.5px dashed #e5e7eb;background:#f9fafb;min-height:52px;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:11px;color:#d1d5db;font-weight:500;">Por definir</span>
+          </div>
+        </div>`;
       }
     });
 
     html += `</div>`;
 
-    // Connector SVG between rounds (only for clean 2:1 ratio)
+    // Connector SVG between rounds (only when ratio is exactly 2:1)
     if (ri < rounds.length - 1) {
       const nextLen = rounds[ri+1].slots.length;
       const canConn = slots.length === nextLen * 2;
