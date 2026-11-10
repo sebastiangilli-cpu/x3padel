@@ -1952,6 +1952,16 @@ const BRACKET_PHASE_MAP = {
   32: { prev:'16avos',  main:'8avos'   },
 };
 
+// FAP predefined bracket templates keyed by number of classified pairs.
+// Each array lists bracket slots top→bottom: "rankZone" (e.g. "1A"=1st of zone A).
+// Positions 0 and last (when nByes=2) are top seeds that skip the previa.
+// Source: FAP Reglamento de Torneos – bracket draw tables.
+const FAP_BRACKET_TEMPLATES = {
+  6:  ['1A','2B','2C','1C','2A','1B'],           // 9 total pairs  (nByes=2 → semis)
+  8:  ['1A','2B','2C','1D','1C','2D','2A','1B'],  // 12 total pairs (nByes=0 → cuartos)
+  14: ['1A','2C','2F','1E','2B','3A','1D','1C','3B','2A','1F','2E','2D','1B'], // 20 pairs (nByes=2 → 8avos)
+};
+
 // Standard tournament bracket seeding order for n slots (top-to-bottom).
 // Ensures seeds 1 and 2 only meet in the final, 3 and 4 only in semis, etc.
 // E.g. n=8 → [1,8,5,4,3,6,7,2]
@@ -1971,136 +1981,132 @@ function generateBracketSeedOrder(n) {
 function genInitialBracket() {
   try {
   const t = db.tournaments.find(t=>t.id===activeTId);
-  const zones = getZones(t.id); // already sorted A→Z
+  const zones = getZones(t.id); // sorted A→Z
 
-  // Zone firsts in A→Z order (A1 = best seed)
-  const firsts = [];
+  // Build classifMap: { zoneLetter: { rank: { pair, zone, rank } } }
+  const classifMap = {};
   zones.forEach(zone => {
     const ms = zoneMatches(t.id, zone.letter);
     const stand = standingsForZone(zone.pairs, ms);
-    if (stand[0]) firsts.push({ rank:1, zone:zone.letter, pair:stand[0].pair });
-  });
-
-  // Zone seconds – reordered so each zone first plays the second from its
-  // "mirror" zone in the bracket. Ensures zone-mates (A1 & A2) end up on
-  // opposite halves and can only meet in the final.
-  // Rule: first at bracket position p plays second from zone at position (nF+1-p).
-  const rawSeconds = [];
-  zones.forEach(zone => {
-    const ms2 = zoneMatches(t.id, zone.letter);
-    const st2  = standingsForZone(zone.pairs, ms2);
-    if (st2[1]) rawSeconds.push({ rank:2, zone:zone.letter, pair:st2[1].pair });
-  });
-  const nF = firsts.length;
-  const seconds = [];
-  const isPow2 = n => n >= 2 && (n & (n - 1)) === 0;
-  if (rawSeconds.length === nF && nF >= 2 && isPow2(nF)) {
-    const soF    = generateBracketSeedOrder(nF);
-    const zToSec = {};
-    rawSeconds.forEach(s => { zToSec[s.zone] = s; });
-    const ordered = new Array(nF).fill(null);
-    firsts.forEach((first, fi) => {
-      const bp   = soF.indexOf(fi + 1) + 1;   // bracket position of this first
-      const mBp  = nF + 1 - bp;               // mirror position in opposite half
-      const mZone = firsts[soF[mBp - 1] - 1].zone; // zone at mirror position
-      ordered[nF - 1 - fi] = zToSec[mZone] || null;
-    });
-    const usedZones = new Set();
-    ordered.forEach(s => { if (s) { seconds.push(s); usedZones.add(s.zone); } });
-    rawSeconds.forEach(s => { if (!usedZones.has(s.zone)) seconds.push(s); });
-  } else {
-    // Fallback: original Z→A order
-    [...zones].reverse().forEach(zone => {
-      const ms2 = zoneMatches(t.id, zone.letter);
-      const st2  = standingsForZone(zone.pairs, ms2);
-      if (st2[1]) seconds.push({ rank:2, zone:zone.letter, pair:st2[1].pair });
-    });
-  }
-
-  // Zone thirds — only from zones of 4 pairs (3 qualifiers)
-  const thirds = [];
-  zones.forEach(zone => {
-    if (zone.pairs.length !== 4) return;
-    const ms3 = zoneMatches(t.id, zone.letter);
-    const st3 = standingsForZone(zone.pairs, ms3);
-    if (st3[2]) thirds.push({ rank:3, zone:zone.letter, pair:st3[2].pair });
-  });
-
-  const seeded = [...firsts, ...seconds, ...thirds]; // seeds 1..n in rank order
-  if (seeded.length < 2) { alert('Necesitás al menos 2 parejas clasificadas'); return; }
-
-  db.matches = db.matches.filter(m=>!(m.tId===t.id && m.phase!=='zonas'));
-
-  const n      = seeded.length;
-  const bSize  = nextPow2(n);
-  const nByes  = bSize - n;
-  const phMap  = BRACKET_PHASE_MAP[bSize] || BRACKET_PHASE_MAP[32];
-  const seedLabel = c => `${c.zone}${c.rank}`;
-
-  // Seeds 1..nByes get byes; rest play previa
-  const byeSeeds    = seeded.slice(0, nByes);
-  const previaPairs = seeded.slice(nByes);
-
-  // Reorder byeSeeds into bracket-position order (top→bottom in bracket)
-  // using the standard seeding for mainSlots = bSize/2
-  const mainSlots = bSize / 2;
-  let orderedByePairs = [];
-  if (nByes > 0) {
-    const so = generateBracketSeedOrder(mainSlots);
-    for (const rank of so) {
-      if (rank <= nByes) {
-        const c = byeSeeds[rank - 1];
-        orderedByePairs.push({ id:c.pair.id, label:pairLabel(c.pair), seed:seedLabel(c) });
-      }
+    const qualN = zone.pairs.length === 4 ? 3 : 2;
+    classifMap[zone.letter] = {};
+    for (let r = 0; r < qualN; r++) {
+      if (stand[r]) classifMap[zone.letter][r + 1] = { pair: stand[r].pair, zone: zone.letter, rank: r + 1 };
     }
-  }
+  });
 
-  t.bracketInfo = {
-    previaPhase: nByes > 0 ? phMap.prev : null,
-    mainPhase:   phMap.main,
-    bSize, mainSlots,
-    byePairs: orderedByePairs,
-  };
+  // Build ordered classif list: 1sts A→Z, 2nds A→Z, 3rds A→Z
+  const classif = [];
+  [1, 2, 3].forEach(rank => {
+    zones.forEach(z => {
+      const c = classifMap[z.letter] && classifMap[z.letter][rank];
+      if (c) classif.push(c);
+    });
+  });
 
+  if (classif.length < 2) { alert('Necesitás al menos 2 parejas clasificadas'); return; }
+
+  db.matches = db.matches.filter(m => !(m.tId === t.id && m.phase !== 'zonas'));
+
+  const n        = classif.length;
+  const bSize    = nextPow2(n);
+  const nByes    = bSize - n;
+  const phMap    = BRACKET_PHASE_MAP[bSize] || BRACKET_PHASE_MAP[32];
   const firstPhase = phMap.prev;
-  const nP = previaPairs.length;
+  const mainSlots  = bSize / 2;
+  const seedLabel  = c => `${c.zone}${c.rank}`;
+  const fapTpl     = FAP_BRACKET_TEMPLATES[n];
   let mn = 0;
 
-  if (nByes === 0) {
-    // All pairs enter directly — use standard bracket seed order so that
-    // sequential pairing in every subsequent round keeps top seeds in opposite
-    // bracket halves (seed1 and seed2 can only meet in the final).
-    const so = generateBracketSeedOrder(nP);
-    for (let i = 0; i < nP - 1; i += 2) {
+  if (fapTpl && (nByes === 0 || nByes === 2)) {
+    // ── FAP predefined bracket ──────────────────────────────────────────────
+    // Build lookup "1A" → classif entry
+    const bySlot = {};
+    classif.forEach(c => { bySlot[`${c.rank}${c.zone}`] = c; });
+    const slots = fapTpl.map(s => bySlot[s] || null);
+
+    // Byes: first slot (1A) and last slot (1B) skip the previa
+    const byeEntries = nByes === 2 ? [slots[0], slots[n - 1]].filter(Boolean) : [];
+    const previaSlots = nByes === 2 ? slots.slice(1, n - 1) : slots;
+
+    // bracketInfo for advanceBracket
+    const orderedByePairs = byeEntries.map(c => ({
+      id: c.pair.id, label: pairLabel(c.pair), seed: seedLabel(c),
+    }));
+    t.bracketInfo = {
+      previaPhase: nByes > 0 ? firstPhase : null,
+      mainPhase:   phMap.main,
+      bSize, mainSlots,
+      byePairs: orderedByePairs,
+    };
+
+    // Create previa (8avos) matches in FAP order: adjacent pairs in template
+    for (let i = 0; i + 1 < previaSlots.length; i += 2) {
+      const a = previaSlots[i], b = previaSlots[i + 1];
+      if (!a || !b) continue;
       mn++;
-      const a = previaPairs[so[i] - 1], b = previaPairs[so[i + 1] - 1];
       db.matches.push({ id:uid(), tId:t.id, phase:firstPhase, zone:null, matchNum:mn,
         p1Id:a.pair.id, p2Id:b.pair.id,
         p1Label:pairLabel(a.pair), p2Label:pairLabel(b.pair),
         p1Seed:seedLabel(a), p2Seed:seedLabel(b),
         sets:[[null,null],[null,null],[null,null]], winner:null });
     }
+
   } else {
-    // Previa pool (non-seeded pairs): cross-seed within pool so the strongest
-    // previa pair meets the weakest, producing a gradient of winners for the
-    // slot-array placement into the main bracket.
-    for (let i = 0; i < Math.floor(nP / 2); i++) {
-      mn++;
-      const a = previaPairs[i], b = previaPairs[nP - 1 - i];
-      db.matches.push({ id:uid(), tId:t.id, phase:firstPhase, zone:null, matchNum:mn,
-        p1Id:a.pair.id, p2Id:b.pair.id,
-        p1Label:pairLabel(a.pair), p2Label:pairLabel(b.pair),
-        p1Seed:seedLabel(a), p2Seed:seedLabel(b),
-        sets:[[null,null],[null,null],[null,null]], winner:null });
+    // ── Fallback: seeded bracket (non-FAP size) ─────────────────────────────
+    const seeded = classif;
+    const byeSeeds    = seeded.slice(0, nByes);
+    const previaPairs = seeded.slice(nByes);
+    const nP = previaPairs.length;
+
+    // Reorder bye seeds using standard bracket-position order
+    let orderedByePairs = [];
+    if (nByes > 0) {
+      const so = generateBracketSeedOrder(mainSlots);
+      for (const rank of so) {
+        if (rank <= nByes) {
+          const c = byeSeeds[rank - 1];
+          orderedByePairs.push({ id:c.pair.id, label:pairLabel(c.pair), seed:seedLabel(c) });
+        }
+      }
     }
-    if (nP % 2 === 1) {
-      mn++;
-      const mid = previaPairs[Math.floor(nP / 2)];
-      db.matches.push({ id:uid(), tId:t.id, phase:firstPhase, zone:null, matchNum:mn,
-        p1Id:mid.pair.id, p2Id:null,
-        p1Label:pairLabel(mid.pair), p2Label:'BYE',
-        p1Seed:seedLabel(mid), p2Seed:null,
-        sets:[[null,null],[null,null],[null,null]], winner:'p1' });
+    t.bracketInfo = {
+      previaPhase: nByes > 0 ? phMap.prev : null,
+      mainPhase:   phMap.main,
+      bSize, mainSlots,
+      byePairs: orderedByePairs,
+    };
+
+    if (nByes === 0) {
+      const so = generateBracketSeedOrder(nP);
+      for (let i = 0; i < nP - 1; i += 2) {
+        mn++;
+        const a = previaPairs[so[i] - 1], b = previaPairs[so[i + 1] - 1];
+        db.matches.push({ id:uid(), tId:t.id, phase:firstPhase, zone:null, matchNum:mn,
+          p1Id:a.pair.id, p2Id:b.pair.id,
+          p1Label:pairLabel(a.pair), p2Label:pairLabel(b.pair),
+          p1Seed:seedLabel(a), p2Seed:seedLabel(b),
+          sets:[[null,null],[null,null],[null,null]], winner:null });
+      }
+    } else {
+      for (let i = 0; i < Math.floor(nP / 2); i++) {
+        mn++;
+        const a = previaPairs[i], b = previaPairs[nP - 1 - i];
+        db.matches.push({ id:uid(), tId:t.id, phase:firstPhase, zone:null, matchNum:mn,
+          p1Id:a.pair.id, p2Id:b.pair.id,
+          p1Label:pairLabel(a.pair), p2Label:pairLabel(b.pair),
+          p1Seed:seedLabel(a), p2Seed:seedLabel(b),
+          sets:[[null,null],[null,null],[null,null]], winner:null });
+      }
+      if (nP % 2 === 1) {
+        mn++;
+        const mid = previaPairs[Math.floor(nP / 2)];
+        db.matches.push({ id:uid(), tId:t.id, phase:firstPhase, zone:null, matchNum:mn,
+          p1Id:mid.pair.id, p2Id:null,
+          p1Label:pairLabel(mid.pair), p2Label:'BYE',
+          p1Seed:seedLabel(mid), p2Seed:null,
+          sets:[[null,null],[null,null],[null,null]], winner:'p1' });
+      }
     }
   }
 
