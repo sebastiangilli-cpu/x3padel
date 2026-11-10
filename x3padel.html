@@ -161,6 +161,7 @@ let _dbReady = true; // db initialized above from cache
 let currentView = 'home';
 let activeTId = null;     // active tournament id
 let activeResultTId = null; // selected tournament in public results
+let activePublicTab = 'zonas'; // 'zonas' | 'llave'
 let adminOk = false;
 
 function nav(v) {
@@ -435,26 +436,44 @@ function viewResults() {
     html += `
       <div class="rounded-2xl p-4 mb-5 text-center" style="background:#1A2500;border:2px solid #B8FF00">
         <h2 class="text-2xl font-black text-white">${t.name}</h2>
-        <p class="text-sm mt-0.5" style="color:#B8FF00">${t.status==='en_curso'?'Resultados en vivo':'Torneo finalizado'} · Fase de Zonas</p>
+        <p class="text-sm mt-0.5" style="color:#B8FF00">${t.status==='en_curso'?'Resultados en vivo':'Torneo finalizado'}</p>
       </div>`;
   }
 
   if (zones.length === 0) return html + `<div class="text-center text-gray-600 py-8">Las zonas aún no fueron asignadas.</div>`;
 
+  const bm = db.matches.filter(m => m.tId === t.id && m.phase !== 'zonas');
+  const hasBracket = bm.length > 0;
+
+  // Tabs
   html += `
-  <div class="flex items-center justify-between mb-3">
-    <h3 class="text-base font-bold text-gray-700">🗂 Zonas</h3>
-    <button onclick="pdfZones('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:scale-95 transition-all" title="Descargar PDF de zonas">
-      📄 Descargar PDF
+  <div class="flex gap-1 mb-4 p-1 rounded-xl" style="background:#f3f4f6;">
+    <button onclick="activePublicTab='zonas';render()"
+      class="flex-1 py-2 rounded-lg text-sm font-bold transition-all"
+      style="${activePublicTab==='zonas'?'background:#1A2500;color:#B8FF00;box-shadow:0 1px 4px rgba(0,0,0,0.15)':'color:#6b7280'}">
+      🗂 Zonas
     </button>
-  </div>
-  <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-    ${zones.map(z => publicZoneCard(t, z)).join('')}
+    <button onclick="activePublicTab='llave';render()"
+      class="flex-1 py-2 rounded-lg text-sm font-bold transition-all"
+      style="${activePublicTab==='llave'?'background:#1A2500;color:#B8FF00;box-shadow:0 1px 4px rgba(0,0,0,0.15)':'color:#6b7280'}">
+      🏆 Llave
+    </button>
   </div>`;
 
-  // bracket
-  const bm = db.matches.filter(m => m.tId === t.id && m.phase !== 'zonas');
-  if (bm.length > 0) html += publicBracket(t, bm, champion);
+  if (activePublicTab === 'zonas') {
+    html += `
+    <div class="flex items-center justify-between mb-3">
+      <span class="text-sm font-bold text-gray-700">Fase de grupos</span>
+      <button onclick="pdfZones('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 active:scale-95 transition-all" title="Descargar PDF de zonas">
+        📄 PDF
+      </button>
+    </div>
+    <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+      ${zones.map(z => publicZoneCard(t, z)).join('')}
+    </div>`;
+  } else {
+    html += publicBracket(t, bm, champion);
+  }
 
   return html;
 }
@@ -532,8 +551,7 @@ function publicZoneCard(t, zone) {
             const badgeStyle = (won) => won
               ? 'background:#1A2500;color:#B8FF00;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;flex-shrink:0;letter-spacing:0.03em;'
               : 'background:#e5e7eb;color:#6b7280;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;flex-shrink:0;letter-spacing:0.03em;';
-            return `${mi>0?'<div style="border-top:1px dashed #e5e7eb;margin:4px 0;"></div>':''}
-            <div class="flex flex-col gap-0.5" style="padding:4px 0;">
+            return `<div class="flex flex-col gap-0.5" style="padding:5px 0;${mi>0?'border-top:1px dashed #d1d5db;padding-top:7px;margin-top:2px;':''}">
               ${mt?`<div class="flex items-center gap-1 mb-1" style="color:#78C832;font-size:10px;font-weight:700;">⏰ ${mt}hs</div>`:''}
               <div class="flex items-center gap-1.5">
                 <span style="${badgeStyle(m.winner==='p1')}">${p1tag||'?'}</span>
@@ -2764,10 +2782,9 @@ function autoAdvanceBracketIfReady(tId) {
   if (currentPhase === 'final') return; // already champion
 
   const currentMatches = bm.filter(m=>m.phase===currentPhase);
-  // Only auto-advance if ALL real matches (non-BYE) in the current phase have a winner
-  const realMatches = currentMatches.filter(m=>m.p2Label!=='BYE');
-  if (realMatches.length === 0) return;
-  if (!realMatches.every(m=>m.winner)) return;
+  // All matches must have a winner (BYE matches are auto-won at creation)
+  if (currentMatches.length === 0) return;
+  if (!currentMatches.every(m=>m.winner)) return;
 
   const nextPhase = BRACKET_ORDER[BRACKET_ORDER.indexOf(currentPhase)+1];
   if (!nextPhase) return;
