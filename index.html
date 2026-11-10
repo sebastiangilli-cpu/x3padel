@@ -1831,7 +1831,7 @@ function viewAdminBracket() {
         <div class="bg-white rounded-2xl border border-gray-100 p-5 mb-5 shadow-sm">
           <div class="flex items-center justify-between mb-3">
             <h3 class="font-bold text-gray-700 text-sm">Clasificadas de zonas (${classif.length})</h3>
-            ${bmPhases.length === 0 && classif.length >= 2 ? `<button onclick="genInitialBracket()" class="btn-primary px-4 py-2 rounded-lg text-sm font-bold">⚡ Generar bracket</button>` : ''}
+            ${classif.length >= 2 ? `<button onclick="${bmPhases.length === 0 ? 'genInitialBracket()' : "confirm('¿Regenerar bracket? Se borrarán todos los resultados del bracket actual.')&&genInitialBracket()"}" class="btn-primary px-4 py-2 rounded-lg text-sm font-bold">${bmPhases.length === 0 ? '⚡ Generar bracket' : '🔄 Regenerar bracket'}</button>` : ''}
           </div>
           ${_nByes > 0 ? `
           <div class="text-xs mb-3 px-3 py-2 rounded-lg font-medium" style="background:#edfad0;color:#3d6600">
