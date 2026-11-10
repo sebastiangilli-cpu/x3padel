@@ -1721,7 +1721,7 @@ function setScore(matchId, setIdx, side, value) {
   });
   m.winner = p1s>=2?'p1':p2s>=2?'p2':null;
 
-  // After zone match 1 is done, propagate results to dependent matches
+  // After zone match is done, propagate results to dependent matches
   if (m.phase==='zonas' && m.winner) {
     const zm = db.matches.filter(x=>x.tId===m.tId&&x.zone===m.zone&&x.phase==='zonas').sort((a,b)=>a.matchNum-b.matchNum);
     const m1 = zm.find(x=>x.matchNum===1);
@@ -1729,25 +1729,50 @@ function setScore(matchId, setIdx, side, value) {
     const m3 = zm.find(x=>x.matchNum===3);
     const m4 = zm.find(x=>x.matchNum===4);
 
-    // 3-pair zone (exactly 3 matches in zone): after match 1, populate p1Id for matches 2 & 3
-    if (m.matchNum===1 && zm.length === 3) {
-      if (m2) m2.p1Id = m.winner==='p1' ? m.p1Id : m.p2Id;
-      if (m3) m3.p1Id = m.winner==='p1' ? m.p2Id : m.p1Id;
-    }
+    // Detect zone type from PAIR COUNT (not match count) — most reliable source of truth
+    const zonePairs = db.pairs.filter(p => p.tId===m.tId && p.zone===m.zone && !p.suplente);
+    const isZone4 = zonePairs.length === 4;
 
-    // 4-pair zone (exactly 4 matches in zone): after BOTH matches 1 and 2 are done, populate matches 3 & 4
-    if ((m.matchNum===1 || m.matchNum===2) && zm.length === 4 && m3 && m4) {
-      if (m1?.winner && m2?.winner) {
-        // Match 3: winners of M1 and M2 face each other (1st vs 2nd)
-        m3.p1Id = m1.winner==='p1' ? m1.p1Id : m1.p2Id;
-        m3.p2Id = m2.winner==='p1' ? m2.p1Id : m2.p2Id;
-        m3.p1Label = null;
-        m3.p2Label = null;
-        // Match 4: losers of M1 and M2 face each other (3rd vs 4th)
-        m4.p1Id = m1.winner==='p1' ? m1.p2Id : m1.p1Id;
-        m4.p2Id = m2.winner==='p1' ? m2.p2Id : m2.p1Id;
-        m4.p1Label = null;
-        m4.p2Label = null;
+    if (!isZone4) {
+      // 3-pair zone: after match 1, populate p1Id for matches 2 & 3
+      if (m.matchNum===1 && m3) {
+        if (m2) m2.p1Id = m.winner==='p1' ? m.p1Id : m.p2Id;
+        if (m3) m3.p1Id = m.winner==='p1' ? m.p2Id : m.p1Id;
+      }
+    } else {
+      // 4-pair zone: if m3 or m4 don't exist yet (old data), create them first
+      if (!m3 || !m4) {
+        const zp = zonePairs.sort((a,b)=>a.pos-b.pos);
+        if (!m3) {
+          db.matches.push({ id:uid(), tId:m.tId, phase:'zonas', zone:m.zone, matchNum:3,
+            p1Id:null, p2Id:null,
+            p1Label:`Gan.${m.zone}1/${m.zone}4`, p2Label:`Gan.${m.zone}2/${m.zone}3`,
+            sets:[[null,null],[null,null],[null,null]], winner:null });
+        }
+        if (!m4) {
+          db.matches.push({ id:uid(), tId:m.tId, phase:'zonas', zone:m.zone, matchNum:4,
+            p1Id:null, p2Id:null,
+            p1Label:`Perd.${m.zone}1/${m.zone}4`, p2Label:`Perd.${m.zone}2/${m.zone}3`,
+            sets:[[null,null],[null,null],[null,null]], winner:null });
+        }
+      }
+      // Re-fetch m3/m4 after potential creation
+      const zm2 = db.matches.filter(x=>x.tId===m.tId&&x.zone===m.zone&&x.phase==='zonas');
+      const rm3 = zm2.find(x=>x.matchNum===3);
+      const rm4 = zm2.find(x=>x.matchNum===4);
+
+      // After BOTH matches 1 and 2 are done, populate m3 and m4 with actual pair IDs
+      if ((m.matchNum===1 || m.matchNum===2) && rm3 && rm4) {
+        const rm1 = zm2.find(x=>x.matchNum===1);
+        const rm2 = zm2.find(x=>x.matchNum===2);
+        if (rm1?.winner && rm2?.winner) {
+          rm3.p1Id = rm1.winner==='p1' ? rm1.p1Id : rm1.p2Id;
+          rm3.p2Id = rm2.winner==='p1' ? rm2.p1Id : rm2.p2Id;
+          rm3.p1Label = null; rm3.p2Label = null;
+          rm4.p1Id = rm1.winner==='p1' ? rm1.p2Id : rm1.p1Id;
+          rm4.p2Id = rm2.winner==='p1' ? rm2.p2Id : rm2.p1Id;
+          rm4.p1Label = null; rm4.p2Label = null;
+        }
       }
     }
   }
