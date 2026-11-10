@@ -1889,7 +1889,7 @@ function renderBracketVisual(t, bm, unlockedPhases, readOnly) {
           <div onclick="${canEnter?`openScoreModal('${m.id}',true)`:''}" style="width:100%;border-radius:12px;overflow:hidden;border:1.5px solid ${m.winner?'#c6f6d5':'#e5e7eb'};background:white;box-shadow:0 1px 3px rgba(0,0,0,0.07);${canEnter?'cursor:pointer;':''}">
             ${bvRow(m,'p1')}
             ${bvRow(m,'p2')}
-            ${m.matchDay||m.matchTime?`<div style="padding:2px 10px;font-size:10px;color:#9ca3af;border-top:1px solid #f3f4f6;background:#fafafa;">${[m.matchDay,m.matchTime].filter(Boolean).join(' · ')}</div>`:''}
+            ${(m.matchDay||m.matchTime)?`<div style="padding:3px 10px;font-size:10px;color:#9ca3af;border-top:1px solid #f3f4f6;background:#fafafa;">📅 ${[m.matchDay,m.matchTime?m.matchTime+'hs':''].filter(Boolean).join(' ')}</div>`:canEnter?`<div style="padding:3px 10px;font-size:10px;color:#b8c5b0;border-top:1px solid #f3f4f6;background:#fafafa;text-align:center;">Tocá para cargar resultado</div>`:''}
           </div>
         </div>`;
       } else if (slot.type === 'bye') {
@@ -2052,41 +2052,22 @@ function viewAdminBracket() {
           <div style="padding:12px 8px 4px 12px;min-width:min-content;">
             ${renderBracketVisual(t, bm, unlockedPhases)}
           </div>
-
-          <!-- Per-match controls (time scheduling + score entry) -->
-          <div class="border-t border-gray-100 divide-y divide-gray-50">
-            ${bmPhases.map(ph => {
-              const phMatches = bm.filter(m=>m.phase===ph).sort((a,b)=>a.matchNum-b.matchNum);
-              const isLastPhase = ph === currentPhase;
-              const isLocked = !isLastPhase && !unlockedPhases.includes(ph);
-              return phMatches.filter(m => m.p2Label !== 'BYE').map((m,mi) => {
-                const canEnter = !isLocked && m.p1Label && m.p2Label;
-                return `
-                <div class="px-4 py-3 flex flex-wrap items-center gap-2" style="background:white;">
-                  <span class="text-xs font-bold" style="color:${PHASE_COLORS[ph]||'#6b7280'};min-width:80px;">${BRACKET_NAMES[ph]||ph} #${mi+1}</span>
-                  <select onchange="saveBracketMatchTime('${m.id}','day',this.value)"
-                    class="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none bg-white text-gray-700">
-                    <option value="">Día</option>
-                    ${['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'].map(d=>`<option value="${d}"${m.matchDay===d?' selected':''}>${d}</option>`).join('')}
-                  </select>
-                  <input type="time" value="${m.matchTime||''}"
-                    onchange="saveBracketMatchTime('${m.id}','time',this.value)"
-                    class="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none text-gray-700">
-                  ${canEnter ? `
-                  <button onclick="openScoreModal('${m.id}',true)"
-                    class="ml-auto px-3 py-1 rounded-lg text-xs font-bold"
-                    style="background:${m.winner?'#edfad0':'#f3f4f6'};color:${m.winner?'#3d6600':'#6b7280'};">
-                    ${m.winner?'✎ Editar':'⊕ Resultado'}
-                  </button>` : ''}
-                  <label class="cursor-pointer text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 ${canEnter?'':'ml-auto'}">
+          <!-- Photo controls (compact row per match) -->
+          ${bmPhases.some(ph => bm.filter(m=>m.phase===ph).some(m=>m.p2Label!=='BYE')) ? `
+          <div class="border-t border-gray-100 divide-y divide-gray-50 px-3 py-2">
+            <p class="text-xs text-gray-400 pb-1">Tocá un cruce en la llave para cargar día, horario y resultado. Fotos:</p>
+            <div class="flex flex-wrap gap-3 pt-2">
+              ${bmPhases.map(ph => bm.filter(m=>m.phase===ph&&m.p2Label!=='BYE').map((m,mi) => `
+                <div class="flex items-center gap-1.5">
+                  <span class="text-xs font-bold" style="color:${PHASE_COLORS[ph]||'#6b7280'}">${BRACKET_NAMES[ph]||ph} #${mi+1}</span>
+                  <label class="cursor-pointer text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
                     <input type="file" accept="image/*" class="hidden" onchange="attachMatchPhoto('${m.id}',this)">
-                    ${m.photo?'🔄':'📷'}
+                    ${m.photo?'🔄 foto':'📷'}
                   </label>
-                  ${m.photo?`<img src="${m.photo}" class="h-6 w-6 rounded object-cover cursor-pointer" onclick="openPhotoViewer('${m.id}')" title="Ver foto"><button onclick="removeMatchPhoto('${m.id}')" class="text-xs text-red-400">✕</button>`:''}
-                </div>`;
-              }).join('');
-            }).join('')}
-          </div>
+                  ${m.photo?`<img src="${m.photo}" class="h-5 w-5 rounded object-cover cursor-pointer" onclick="openPhotoViewer('${m.id}')" title="Ver foto"><button onclick="removeMatchPhoto('${m.id}')" class="text-xs text-red-400 leading-none">✕</button>`:''}
+                </div>`).join('')).join('')}
+            </div>
+          </div>` : ''}
         </div>
 
         ${allCurrentDone && nextPhase ? `
@@ -2669,6 +2650,15 @@ function openScoreModal(matchId, isBracket) {
 
   document.getElementById('sm-winner').classList.add('hidden');
   document.getElementById('sm-error').classList.add('hidden');
+  // Show/hide schedule section for bracket matches
+  const schedEl = document.getElementById('sm-schedule');
+  if (scoreModal.isBracket) {
+    schedEl.classList.remove('hidden');
+    document.getElementById('sm-day').value = m.matchDay || '';
+    document.getElementById('sm-time').value = m.matchTime || '';
+  } else {
+    schedEl.classList.add('hidden');
+  }
   refreshScoreModal();
   document.getElementById('score-modal').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
@@ -2754,6 +2744,11 @@ function saveScoreModal() {
       }
     }
   }
+  // Save day/time for bracket matches
+  if (scoreModal.isBracket) {
+    m.matchDay  = document.getElementById('sm-day').value  || null;
+    m.matchTime = document.getElementById('sm-time').value || null;
+  }
   saveDB();
   // Auto-advance bracket when all matches in current phase are done
   if (scoreModal.isBracket && m.winner) {
@@ -2773,26 +2768,51 @@ function saveScoreModal() {
 }
 
 function autoAdvanceBracketIfReady(tId) {
-  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  // Temporarily set activeTId so advanceBracket() works (it uses activeTId internally)
+  const prevActiveTId = activeTId;
+  activeTId = tId;
+
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) { activeTId = prevActiveTId; return; }
   const bm = db.matches.filter(m=>m.tId===tId && m.phase!=='zonas');
+  const bmPhases = BRACKET_ORDER.filter(ph=>bm.some(m=>m.phase===ph));
+  if (bmPhases.length === 0) { activeTId = prevActiveTId; return; }
+
+  const currentPhase = bmPhases[bmPhases.length-1];
+  if (currentPhase === 'final') { activeTId = prevActiveTId; return; }
+
+  const currentMatches = bm.filter(m=>m.phase===currentPhase);
+  if (currentMatches.length === 0 || !currentMatches.every(m=>m.winner)) {
+    activeTId = prevActiveTId; return;
+  }
+
+  const nextPhase = BRACKET_ORDER[BRACKET_ORDER.indexOf(currentPhase)+1];
+  if (!nextPhase) { activeTId = prevActiveTId; return; }
+  if (bm.some(m=>m.phase===nextPhase)) { activeTId = prevActiveTId; return; }
+
+  // All good — call the proven advanceBracket logic without alert/confirm
+  advanceBracketSilent(tId);
+  activeTId = prevActiveTId;
+
+  // Brief toast notification
+  showToast(`⚡ ${BRACKET_NAMES[nextPhase]} generada automáticamente`);
+}
+
+function advanceBracketSilent(tId) {
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  const bm = db.matches.filter(m=>m.tId===t.id && m.phase!=='zonas');
   const bmPhases = BRACKET_ORDER.filter(ph=>bm.some(m=>m.phase===ph));
   if (bmPhases.length === 0) return;
 
   const currentPhase = bmPhases[bmPhases.length-1];
-  if (currentPhase === 'final') return; // already champion
-
-  const currentMatches = bm.filter(m=>m.phase===currentPhase);
-  // All matches must have a winner (BYE matches are auto-won at creation)
-  if (currentMatches.length === 0) return;
+  const currentMatches = bm.filter(m=>m.phase===currentPhase).sort((a,b)=>a.matchNum-b.matchNum);
   if (!currentMatches.every(m=>m.winner)) return;
+  if (currentPhase === 'final') return;
 
   const nextPhase = BRACKET_ORDER[BRACKET_ORDER.indexOf(currentPhase)+1];
   if (!nextPhase) return;
+  db.matches = db.matches.filter(m=>!(m.tId===t.id && m.phase===nextPhase));
 
-  // Check next phase doesn't already exist
-  if (bm.some(m=>m.phase===nextPhase)) return;
-
-  const winners = currentMatches.sort((a,b)=>a.matchNum-b.matchNum).map(m=>({
+  const winners = currentMatches.map(m=>({
     label: m.winner==='p1' ? m.p1Label : m.p2Label,
     id:    m.winner==='p1' ? m.p1Id   : m.p2Id,
     seed:  m.winner==='p1' ? m.p1Seed : m.p2Seed,
@@ -2803,9 +2823,9 @@ function autoAdvanceBracketIfReady(tId) {
 
   if (bi.previaPhase && currentPhase === bi.previaPhase && bi.byePairs && bi.byePairs.length > 0) {
     const orderedByePairs = bi.byePairs;
-    const nByes = orderedByePairs.length;
-    const mainSlots = bi.mainSlots || (bi.bSize / 2);
-    const seedOrder = generateBracketSeedOrder(mainSlots);
+    const nByes      = orderedByePairs.length;
+    const mainSlots  = bi.mainSlots || (bi.bSize / 2);
+    const seedOrder  = generateBracketSeedOrder(mainSlots);
     let byeIdx = 0, prevIdx = 0;
     const slots = [];
     for (const rank of seedOrder) {
@@ -2816,7 +2836,7 @@ function autoAdvanceBracketIfReady(tId) {
       mn++;
       const a = slots[i], b = slots[i+1];
       const autoWin = a.id===null?'p2':b.id===null?'p1':null;
-      db.matches.push({id:uid(),tId:tId,phase:nextPhase,zone:null,matchNum:mn,
+      db.matches.push({id:uid(),tId:t.id,phase:nextPhase,zone:null,matchNum:mn,
         p1Id:a.id,p2Id:b.id,p1Label:a.label,p2Label:b.label,
         p1Seed:a.seed||null,p2Seed:b.seed||null,
         sets:[[null,null],[null,null],[null,null]],winner:autoWin});
@@ -2827,7 +2847,7 @@ function autoAdvanceBracketIfReady(tId) {
       mn++;
       const a = winners[i], b = winners[i+1];
       const autoWin = a.id===null?'p2':b.id===null?'p1':null;
-      db.matches.push({id:uid(),tId:tId,phase:nextPhase,zone:null,matchNum:mn,
+      db.matches.push({id:uid(),tId:t.id,phase:nextPhase,zone:null,matchNum:mn,
         p1Id:a.id,p2Id:b.id,p1Label:a.label,p2Label:b.label,
         p1Seed:a.seed||null,p2Seed:b.seed||null,
         sets:[[null,null],[null,null],[null,null]],winner:autoWin});
@@ -2835,13 +2855,27 @@ function autoAdvanceBracketIfReady(tId) {
     if (nW % 2 === 1) {
       mn++;
       const mid = winners[Math.floor(nW/2)];
-      db.matches.push({id:uid(),tId:tId,phase:nextPhase,zone:null,matchNum:mn,
+      db.matches.push({id:uid(),tId:t.id,phase:nextPhase,zone:null,matchNum:mn,
         p1Id:mid.id,p2Id:null,p1Label:mid.label,p2Label:'BYE',
         p1Seed:mid.seed||null,p2Seed:null,
         sets:[[null,null],[null,null],[null,null]],winner:'p1'});
     }
   }
   saveDB();
+}
+
+function showToast(msg) {
+  let el = document.getElementById('x3-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'x3-toast';
+    el.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1A2500;color:#B8FF00;font-size:13px;font-weight:700;padding:10px 20px;border-radius:999px;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:9999;transition:opacity 0.4s;pointer-events:none;';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = '1';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.opacity = '0'; }, 2500);
 }
 
 function closeScoreModal() {
@@ -2959,6 +2993,15 @@ function downloadViewerPhoto() {
       <button onclick="closeScoreModal()" class="text-gray-500 hover:text-white text-xl leading-none">✕</button>
     </div>
     <div class="p-5">
+      <!-- Bracket: day/time scheduling (hidden for zone matches) -->
+      <div id="sm-schedule" class="hidden mb-4 flex gap-2">
+        <select id="sm-day" class="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none bg-white text-gray-700 flex-1">
+          <option value="">Día</option>
+          <option>Lunes</option><option>Martes</option><option>Miércoles</option>
+          <option>Jueves</option><option>Viernes</option><option>Sábado</option><option>Domingo</option>
+        </select>
+        <input id="sm-time" type="time" class="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none text-gray-700 flex-1">
+      </div>
       <!-- Teams -->
       <div class="flex items-center justify-between mb-5">
         <span id="sm-p1" class="flex-1 font-bold text-gray-800 text-sm truncate"></span>
