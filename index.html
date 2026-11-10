@@ -1969,6 +1969,7 @@ function generateBracketSeedOrder(n) {
 }
 
 function genInitialBracket() {
+  try {
   const t = db.tournaments.find(t=>t.id===activeTId);
   const zones = getZones(t.id); // already sorted A→Z
 
@@ -2104,6 +2105,7 @@ function genInitialBracket() {
   }
 
   saveDB(); render();
+  } catch(e) { alert('Error generando bracket: ' + e.message + '\n' + e.stack); }
 }
 
 function advanceBracket() {
