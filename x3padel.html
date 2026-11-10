@@ -529,17 +529,21 @@ function publicZoneCard(t, zone) {
             const p2tag = pair2 ? `${pair2.zone}${pair2.pos}` : null;
             const sc = m.sets.filter(([a,b])=>a!==null&&b!==null&&a!==''&&b!=='').map(([a,b])=>`${a}-${b}`).join(' ');
             const mt = getMatchTime(t, zone.letter, mi);
-            return `<div class="text-xs py-1 flex flex-col gap-0.5">
-              ${mt?`<div class="flex items-center gap-1 text-gray-500 mb-0.5"><span class="font-bold">${mt}hs</span></div>`:''}
+            const badgeStyle = (won) => won
+              ? 'background:#1A2500;color:#B8FF00;font-size:11px;font-weight:800;padding:2px 7px;border-radius:999px;flex-shrink:0;letter-spacing:0.03em;'
+              : 'background:#e5e7eb;color:#6b7280;font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;flex-shrink:0;letter-spacing:0.03em;';
+            return `${mi>0?'<div style="border-top:1px dashed #e5e7eb;margin:4px 0;"></div>':''}
+            <div class="flex flex-col gap-0.5" style="padding:4px 0;">
+              ${mt?`<div class="flex items-center gap-1 mb-1" style="color:#78C832;font-size:10px;font-weight:700;">⏰ ${mt}hs</div>`:''}
               <div class="flex items-center gap-1.5">
-                <span class="font-bold ${m.winner==='p1'?'text-white':'text-gray-700'} px-1.5 py-0.5 rounded flex-shrink-0 text-xs" style="background:${m.winner==='p1'?'#1A2500':'#f3f4f6'};min-width:16px;text-align:center;">${p1tag||'?'}</span>
-                <span class="flex-1 font-${m.winner==='p1'?'bold':'normal'} truncate" style="color:${m.winner==='p1'?'#1A2500':m.winner==='p2'?'#9ca3af':'#374151'}">${p1n}</span>
-                <span class="font-bold text-gray-500 flex-shrink-0">${sc ? sc.split(' ').map(s=>s.split('-')[0]).join(' ') : '—'}</span>
+                <span style="${badgeStyle(m.winner==='p1')}">${p1tag||'?'}</span>
+                <span class="flex-1 truncate" style="font-size:12px;font-weight:${m.winner==='p1'?700:400};color:${m.winner==='p1'?'#1A2500':m.winner==='p2'?'#9ca3af':'#374151'}">${p1n}</span>
+                <span style="font-size:12px;font-weight:700;color:${m.winner==='p1'?'#1A2500':'#9ca3af'};flex-shrink:0;">${sc ? sc.split(' ').map(s=>s.split('-')[0]).join(' ') : ''}</span>
               </div>
               <div class="flex items-center gap-1.5">
-                <span class="font-bold ${m.winner==='p2'?'text-white':'text-gray-700'} px-1.5 py-0.5 rounded flex-shrink-0 text-xs" style="background:${m.winner==='p2'?'#1A2500':'#f3f4f6'};min-width:16px;text-align:center;">${p2tag||'?'}</span>
-                <span class="flex-1 font-${m.winner==='p2'?'bold':'normal'} truncate" style="color:${m.winner==='p2'?'#1A2500':m.winner==='p1'?'#9ca3af':'#374151'}">${p2n}</span>
-                <span class="font-bold text-gray-500 flex-shrink-0">${sc ? sc.split(' ').map(s=>s.split('-')[1]).join(' ') : '—'}</span>
+                <span style="${badgeStyle(m.winner==='p2')}">${p2tag||'?'}</span>
+                <span class="flex-1 truncate" style="font-size:12px;font-weight:${m.winner==='p2'?700:400};color:${m.winner==='p2'?'#1A2500':m.winner==='p1'?'#9ca3af':'#374151'}">${p2n}</span>
+                <span style="font-size:12px;font-weight:700;color:${m.winner==='p2'?'#1A2500':'#9ca3af'};flex-shrink:0;">${sc ? sc.split(' ').map(s=>s.split('-')[1]).join(' ') : ''}</span>
               </div>
               ${m.photo?`<button onclick="openPhotoViewer('${m.id}')" class="text-xs text-blue-500 mt-0.5 self-end">📷 Ver foto</button>`:''}
             </div>`;
@@ -2733,6 +2737,10 @@ function saveScoreModal() {
     }
   }
   saveDB();
+  // Auto-advance bracket when all matches in current phase are done
+  if (scoreModal.isBracket && m.winner) {
+    autoAdvanceBracketIfReady(m.tId);
+  }
   // Show winner briefly before closing
   const winEl = document.getElementById('sm-winner');
   if (m.winner) {
@@ -2744,6 +2752,79 @@ function saveScoreModal() {
   } else {
     closeScoreModal(); render();
   }
+}
+
+function autoAdvanceBracketIfReady(tId) {
+  const t = db.tournaments.find(x=>x.id===tId); if (!t) return;
+  const bm = db.matches.filter(m=>m.tId===tId && m.phase!=='zonas');
+  const bmPhases = BRACKET_ORDER.filter(ph=>bm.some(m=>m.phase===ph));
+  if (bmPhases.length === 0) return;
+
+  const currentPhase = bmPhases[bmPhases.length-1];
+  if (currentPhase === 'final') return; // already champion
+
+  const currentMatches = bm.filter(m=>m.phase===currentPhase);
+  // Only auto-advance if ALL real matches (non-BYE) in the current phase have a winner
+  const realMatches = currentMatches.filter(m=>m.p2Label!=='BYE');
+  if (realMatches.length === 0) return;
+  if (!realMatches.every(m=>m.winner)) return;
+
+  const nextPhase = BRACKET_ORDER[BRACKET_ORDER.indexOf(currentPhase)+1];
+  if (!nextPhase) return;
+
+  // Check next phase doesn't already exist
+  if (bm.some(m=>m.phase===nextPhase)) return;
+
+  const winners = currentMatches.sort((a,b)=>a.matchNum-b.matchNum).map(m=>({
+    label: m.winner==='p1' ? m.p1Label : m.p2Label,
+    id:    m.winner==='p1' ? m.p1Id   : m.p2Id,
+    seed:  m.winner==='p1' ? m.p1Seed : m.p2Seed,
+  }));
+
+  const bi = t.bracketInfo || {};
+  let mn = 0;
+
+  if (bi.previaPhase && currentPhase === bi.previaPhase && bi.byePairs && bi.byePairs.length > 0) {
+    const orderedByePairs = bi.byePairs;
+    const nByes = orderedByePairs.length;
+    const mainSlots = bi.mainSlots || (bi.bSize / 2);
+    const seedOrder = generateBracketSeedOrder(mainSlots);
+    let byeIdx = 0, prevIdx = 0;
+    const slots = [];
+    for (const rank of seedOrder) {
+      if (rank <= nByes) slots.push(orderedByePairs[byeIdx++]);
+      else { const w = winners[prevIdx++] || {id:null,label:'BYE',seed:null}; slots.push(w); }
+    }
+    for (let i = 0; i < slots.length - 1; i += 2) {
+      mn++;
+      const a = slots[i], b = slots[i+1];
+      const autoWin = a.id===null?'p2':b.id===null?'p1':null;
+      db.matches.push({id:uid(),tId:tId,phase:nextPhase,zone:null,matchNum:mn,
+        p1Id:a.id,p2Id:b.id,p1Label:a.label,p2Label:b.label,
+        p1Seed:a.seed||null,p2Seed:b.seed||null,
+        sets:[[null,null],[null,null],[null,null]],winner:autoWin});
+    }
+  } else {
+    const nW = winners.length;
+    for (let i = 0; i < nW - 1; i += 2) {
+      mn++;
+      const a = winners[i], b = winners[i+1];
+      const autoWin = a.id===null?'p2':b.id===null?'p1':null;
+      db.matches.push({id:uid(),tId:tId,phase:nextPhase,zone:null,matchNum:mn,
+        p1Id:a.id,p2Id:b.id,p1Label:a.label,p2Label:b.label,
+        p1Seed:a.seed||null,p2Seed:b.seed||null,
+        sets:[[null,null],[null,null],[null,null]],winner:autoWin});
+    }
+    if (nW % 2 === 1) {
+      mn++;
+      const mid = winners[Math.floor(nW/2)];
+      db.matches.push({id:uid(),tId:tId,phase:nextPhase,zone:null,matchNum:mn,
+        p1Id:mid.id,p2Id:null,p1Label:mid.label,p2Label:'BYE',
+        p1Seed:mid.seed||null,p2Seed:null,
+        sets:[[null,null],[null,null],[null,null]],winner:'p1'});
+    }
+  }
+  saveDB();
 }
 
 function closeScoreModal() {
