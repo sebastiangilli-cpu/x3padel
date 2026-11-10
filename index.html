@@ -1756,22 +1756,16 @@ function setScore(matchId, setIdx, side, value) {
             sets:[[null,null],[null,null],[null,null]], winner:null });
         }
       }
-      // Re-fetch m3/m4 after potential creation
-      const zm2 = db.matches.filter(x=>x.tId===m.tId&&x.zone===m.zone&&x.phase==='zonas');
-      const rm3 = zm2.find(x=>x.matchNum===3);
-      const rm4 = zm2.find(x=>x.matchNum===4);
-
-      // After BOTH matches 1 and 2 are done, populate m3 and m4 with actual pair IDs
-      if ((m.matchNum===1 || m.matchNum===2) && rm3 && rm4) {
-        const rm1 = zm2.find(x=>x.matchNum===1);
-        const rm2 = zm2.find(x=>x.matchNum===2);
+      // Always ensure m3/m4 have correct pair IDs derived from m1/m2 results
+      {
+        const zm2 = db.matches.filter(x=>x.tId===m.tId&&x.zone===m.zone&&x.phase==='zonas');
+        const rm1=zm2.find(x=>x.matchNum===1), rm2=zm2.find(x=>x.matchNum===2);
+        const rm3=zm2.find(x=>x.matchNum===3), rm4=zm2.find(x=>x.matchNum===4);
         if (rm1?.winner && rm2?.winner) {
-          rm3.p1Id = rm1.winner==='p1' ? rm1.p1Id : rm1.p2Id;
-          rm3.p2Id = rm2.winner==='p1' ? rm2.p1Id : rm2.p2Id;
-          rm3.p1Label = null; rm3.p2Label = null;
-          rm4.p1Id = rm1.winner==='p1' ? rm1.p2Id : rm1.p1Id;
-          rm4.p2Id = rm2.winner==='p1' ? rm2.p2Id : rm2.p1Id;
-          rm4.p1Label = null; rm4.p2Label = null;
+          const wM1=rm1.winner==='p1'?rm1.p1Id:rm1.p2Id, lM1=rm1.winner==='p1'?rm1.p2Id:rm1.p1Id;
+          const wM2=rm2.winner==='p1'?rm2.p1Id:rm2.p2Id, lM2=rm2.winner==='p1'?rm2.p2Id:rm2.p1Id;
+          if(rm3){if(!rm3.p1Id)rm3.p1Id=wM1; if(!rm3.p2Id)rm3.p2Id=wM2; rm3.p1Label=null; rm3.p2Label=null;}
+          if(rm4){if(!rm4.p1Id)rm4.p1Id=lM1; if(!rm4.p2Id)rm4.p2Id=lM2; rm4.p1Label=null; rm4.p2Label=null;}
         }
       }
     }
@@ -2275,21 +2269,32 @@ function computeStats(pairs, matches) {
 // For zone-of-4: positions are determined by bracket outcomes (M3/M4), stats shown for info
 function standingsForZone(pairs, matches) {
   if (pairs.length !== 4) return standings(pairs, matches);
+  const m1 = matches.find(m => m.matchNum === 1);
+  const m2 = matches.find(m => m.matchNum === 2);
   const m3 = matches.find(m => m.matchNum === 3);
   const m4 = matches.find(m => m.matchNum === 4);
-  // Compute actual stats for display (even when bracket order is known)
+
+  // Derive who played in M3/M4 from M1/M2 results (robust even when m3.p1Id is null in DB)
+  let winM1=null, losM1=null, winM2=null, losM2=null;
+  if (m1?.winner) { winM1 = m1.winner==='p1'?m1.p1Id:m1.p2Id; losM1 = m1.winner==='p1'?m1.p2Id:m1.p1Id; }
+  if (m2?.winner) { winM2 = m2.winner==='p1'?m2.p1Id:m2.p2Id; losM2 = m2.winner==='p1'?m2.p2Id:m2.p1Id; }
+
+  // Enrich m3/m4 in-memory so computeStats counts all 4 matches correctly
+  if (m3 && winM1 && winM2) { if (!m3.p1Id) m3.p1Id = winM1; if (!m3.p2Id) m3.p2Id = winM2; }
+  if (m4 && losM1 && losM2) { if (!m4.p1Id) m4.p1Id = losM1; if (!m4.p2Id) m4.p2Id = losM2; }
+
+  // Compute actual stats for display (after enriching pair IDs)
   const st = computeStats(pairs, matches);
-  if (m3?.winner && m4?.winner) {
-    const getP = (m, side) => side === 'p1' ? m.p1Id : m.p2Id;
-    const ids = [
-      getP(m3, m3.winner),                    // 1st: winner of M3
-      getP(m3, m3.winner==='p1'?'p2':'p1'),   // 2nd: loser of M3
-      getP(m4, m4.winner),                    // 3rd: winner of M4
-      getP(m4, m4.winner==='p1'?'p2':'p1'),   // 4th: loser of M4
-    ];
-    const result = ids.map(id => st[id] || null).filter(Boolean);
-    // Add unranked pairs (matches not yet played)
-    pairs.forEach(p => { if (!result.find(r => r.pair.id === p.id)) result.push(st[p.id] || { pair:p, pg:0, pp:0, sg:0, sp:0, jg:0, jp:0 }); });
+
+  if (m3?.winner && m4?.winner && winM1 && winM2 && losM1 && losM2) {
+    // 1st: M3 winner, 2nd: M3 loser, 3rd: M4 winner, 4th: M4 loser
+    // M3 is winM1 (p1) vs winM2 (p2); M4 is losM1 (p1) vs losM2 (p2)
+    const pos1 = m3.winner==='p1' ? winM1 : winM2;
+    const pos2 = m3.winner==='p1' ? winM2 : winM1;
+    const pos3 = m4.winner==='p1' ? losM1 : losM2;
+    const pos4 = m4.winner==='p1' ? losM2 : losM1;
+    const result = [pos1,pos2,pos3,pos4].map(id => st[id]||null).filter(Boolean);
+    pairs.forEach(p => { if (!result.find(r=>r.pair.id===p.id)) result.push(st[p.id]||{pair:p,pg:0,pp:0,sg:0,sp:0,jg:0,jp:0}); });
     return result;
   }
   // Bracket not complete: fall back to PG-based order (with head-to-head)
@@ -2539,13 +2544,15 @@ function saveScoreModal() {
       // 4-pair zone: auto-create m3/m4 if missing (old import data)
       if (!m3) db.matches.push({id:uid(),tId:m.tId,phase:'zonas',zone:m.zone,matchNum:3,p1Id:null,p2Id:null,p1Label:`Gan.${m.zone}1/${m.zone}4`,p2Label:`Gan.${m.zone}2/${m.zone}3`,sets:[[null,null],[null,null],[null,null]],winner:null});
       if (!m4) db.matches.push({id:uid(),tId:m.tId,phase:'zonas',zone:m.zone,matchNum:4,p1Id:null,p2Id:null,p1Label:`Perd.${m.zone}1/${m.zone}4`,p2Label:`Perd.${m.zone}2/${m.zone}3`,sets:[[null,null],[null,null],[null,null]],winner:null});
-      // After both m1 and m2 done, fill in m3/m4 with actual pair IDs
-      if (m.matchNum===1 || m.matchNum===2) {
+      // Always ensure m3/m4 have correct pair IDs derived from m1/m2 results
+      {
         const zm2=db.matches.filter(x=>x.tId===m.tId&&x.zone===m.zone&&x.phase==='zonas');
         const rm1=zm2.find(x=>x.matchNum===1),rm2=zm2.find(x=>x.matchNum===2),rm3=zm2.find(x=>x.matchNum===3),rm4=zm2.find(x=>x.matchNum===4);
-        if(rm1?.winner && rm2?.winner && rm3 && rm4){
-          rm3.p1Id=rm1.winner==='p1'?rm1.p1Id:rm1.p2Id; rm3.p2Id=rm2.winner==='p1'?rm2.p1Id:rm2.p2Id; rm3.p1Label=null; rm3.p2Label=null;
-          rm4.p1Id=rm1.winner==='p1'?rm1.p2Id:rm1.p1Id; rm4.p2Id=rm2.winner==='p1'?rm2.p2Id:rm2.p1Id; rm4.p1Label=null; rm4.p2Label=null;
+        if(rm1?.winner && rm2?.winner){
+          const wM1=rm1.winner==='p1'?rm1.p1Id:rm1.p2Id, lM1=rm1.winner==='p1'?rm1.p2Id:rm1.p1Id;
+          const wM2=rm2.winner==='p1'?rm2.p1Id:rm2.p2Id, lM2=rm2.winner==='p1'?rm2.p2Id:rm2.p1Id;
+          if(rm3){if(!rm3.p1Id)rm3.p1Id=wM1; if(!rm3.p2Id)rm3.p2Id=wM2; rm3.p1Label=null; rm3.p2Label=null;}
+          if(rm4){if(!rm4.p1Id)rm4.p1Id=lM1; if(!rm4.p2Id)rm4.p2Id=lM2; rm4.p1Label=null; rm4.p2Label=null;}
         }
       }
     }
