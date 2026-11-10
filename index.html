@@ -1729,14 +1729,14 @@ function setScore(matchId, setIdx, side, value) {
     const m3 = zm.find(x=>x.matchNum===3);
     const m4 = zm.find(x=>x.matchNum===4);
 
-    // 3-pair zone: after match 1, populate p1Id for matches 2 & 3
-    if (m.matchNum===1 && m3 && !m4) {
+    // 3-pair zone (exactly 3 matches in zone): after match 1, populate p1Id for matches 2 & 3
+    if (m.matchNum===1 && zm.length === 3) {
       if (m2) m2.p1Id = m.winner==='p1' ? m.p1Id : m.p2Id;
       if (m3) m3.p1Id = m.winner==='p1' ? m.p2Id : m.p1Id;
     }
 
-    // 4-pair zone: after BOTH matches 1 and 2 are done, populate matches 3 & 4
-    if ((m.matchNum===1 || m.matchNum===2) && m3 && m4) {
+    // 4-pair zone (exactly 4 matches in zone): after BOTH matches 1 and 2 are done, populate matches 3 & 4
+    if ((m.matchNum===1 || m.matchNum===2) && zm.length === 4 && m3 && m4) {
       if (m1?.winner && m2?.winner) {
         // Match 3: winners of M1 and M2 face each other (1st vs 2nd)
         m3.p1Id = m1.winner==='p1' ? m1.p1Id : m1.p2Id;
