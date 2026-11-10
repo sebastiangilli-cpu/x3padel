@@ -601,8 +601,8 @@ function publicBracket(t, bm, champion) {
           📄 PDF
         </button>
       </div>
-      <div class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style="background:#fafafa;">
-        <div style="padding:12px 8px 4px 12px;">
+      <div class="rounded-2xl border border-gray-100 shadow-sm" style="background:#fafafa;overflow-x:auto;">
+        <div style="padding:12px 8px 4px 12px;min-width:min-content;">
           ${renderBracketVisual(t, bm, [], true)}
         </div>
         ${bm.filter(m=>BRACKET_ORDER.includes(m.phase)&&m.photo).map(m=>`
@@ -1809,7 +1809,16 @@ function renderBracketVisual(t, bm, unlockedPhases, readOnly) {
       // Future phase – TBD placeholders: half the previous round's slot count
       const prevLen = rounds.length > 0 ? rounds[rounds.length-1].slots.length : 2;
       const nTbd    = Math.max(1, Math.round(prevLen / 2));
-      rounds.push({ phase: ph, slots: Array.from({length: nTbd}, () => ({ type:'tbd' })) });
+      // If this is the main phase and we have 2 byes, place them in first/last slots
+      const isMain  = ph === bi.mainPhase;
+      const slots   = Array.from({length: nTbd}, (_, i) => {
+        if (isMain && byePairs.length === 2 && i === 0)
+          return { type:'tbd-bye', bye: byePairs[0], byeSide:'p1' };
+        if (isMain && byePairs.length === 2 && i === nTbd - 1)
+          return { type:'tbd-bye', bye: byePairs[1], byeSide:'p2' };
+        return { type:'tbd' };
+      });
+      rounds.push({ phase: ph, slots });
     }
     // Stop expanding after we reach 1 slot (the final)
     if (rounds[rounds.length-1].slots.length === 1 && ph !== expectedPhs[0]) return;
@@ -1831,7 +1840,7 @@ function renderBracketVisual(t, bm, unlockedPhases, readOnly) {
   let html = `<div style="display:flex;overflow-x:auto;padding:0 0 16px 0;gap:0;min-height:${TOTAL_H+HDR_H+20}px;">`;
 
   rounds.forEach(({ phase, slots }, ri) => {
-    const isLastReal  = ri === rounds.filter(r=>r.slots.some(s=>s.type!=='tbd')).length - 1;
+    const isLastReal  = ri === rounds.filter(r=>r.slots.some(s=>s.type==='match'||s.type==='bye')).length - 1;
     const isLocked    = !isLastReal && !(unlockedPhases||[]).includes(phase);
     const itemH       = TOTAL_H / slots.length;
 
@@ -1865,6 +1874,23 @@ function renderBracketVisual(t, bm, unlockedPhases, readOnly) {
               <span style="flex:1;font-size:12px;font-weight:700;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.label||''}</span>
               <span style="font-size:9px;font-weight:700;color:#78C832;background:#2d4000;padding:1px 5px;border-radius:9px;flex-shrink:0;">BYE</span>
             </div>
+          </div>
+        </div>`;
+      } else if (slot.type === 'tbd-bye') {
+        // One team is already known (bye), the other is TBD
+        const c    = slot.bye;
+        const isP1 = slot.byeSide === 'p1';
+        const byeRow = `<div style="display:flex;align-items:center;gap:5px;padding:7px 10px;background:#f0fdf4;${isP1?'border-bottom:1px solid #d1fae5;':''}">
+          <span style="font-size:10px;font-weight:700;color:#15803d;min-width:26px;flex-shrink:0;">${c.seed||''}</span>
+          <span style="flex:1;font-size:12px;font-weight:700;color:#166534;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.label||''}</span>
+          <span style="font-size:9px;font-weight:700;color:#78C832;background:#1A2500;padding:1px 5px;border-radius:9px;flex-shrink:0;">BYE ✓</span>
+        </div>`;
+        const tbdRow = `<div style="display:flex;align-items:center;padding:7px 10px;${!isP1?'border-bottom:1px solid #f3f4f6;':''}">
+          <span style="font-size:12px;color:#d1d5db;font-style:italic;">Por definir</span>
+        </div>`;
+        html += `<div style="height:${itemH}px;display:flex;align-items:center;padding:3px 6px 3px 2px;box-sizing:border-box;">
+          <div style="width:100%;border-radius:12px;overflow:hidden;border:1.5px solid #d1fae5;background:white;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+            ${isP1 ? byeRow + tbdRow : tbdRow + byeRow}
           </div>
         </div>`;
       } else {
@@ -1995,8 +2021,8 @@ function viewAdminBracket() {
           <span class="text-sm font-bold text-gray-700">Bracket</span>
           <button onclick="pdfBracket('${t.id}')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 bg-white text-gray-600 hover:bg-gray-50">📄 PDF</button>
         </div>
-        <div class="rounded-2xl border border-gray-100 shadow-sm overflow-hidden" style="background:#fafafa;">
-          <div style="padding:12px 8px 4px 12px;">
+        <div class="rounded-2xl border border-gray-100 shadow-sm" style="background:#fafafa;overflow-x:auto;">
+          <div style="padding:12px 8px 4px 12px;min-width:min-content;">
             ${renderBracketVisual(t, bm, unlockedPhases)}
           </div>
 
