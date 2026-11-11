@@ -120,7 +120,7 @@
 // ═══════════════════════════════════════════════════════════════════
 //  VERSION — actualizar este string con cada deploy
 // ═══════════════════════════════════════════════════════════════════
-const APP_BUILD = '20261111_003';
+const APP_BUILD = '20261111_004';
 
 // Al cargar, eliminar parámetro ?v= de la URL sin recargar
 (function() {
@@ -179,6 +179,7 @@ let db = (() => {
 })();
 
 function saveDB() {
+  _lastLocalSaveTs = Date.now(); // marcar para evitar re-render del propio write
   try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
   fbRef.set(db).catch(err => console.error('Firebase error:', err));
   // Publica la versión actual para que los clientes desactualizados se recarguen
@@ -201,6 +202,8 @@ function normSets(sets) {
 }
 
 let lastSyncTime = null;
+let _lastLocalSaveTs = 0;   // timestamp of last local saveDB() call
+let _fbRenderTimer   = null; // debounce timer for remote re-renders
 
 // Listener en tiempo real: todos los dispositivos se actualizan solos
 fbRef.on('value', snapshot => {
@@ -212,11 +215,25 @@ fbRef.on('value', snapshot => {
     matches:     normArr(data?.matches).map(m => ({ ...m, sets: normSets(m.sets) })),
   };
   lastSyncTime = new Date();
-  if (JSON.stringify(fresh) !== JSON.stringify(db)) {
+
+  const freshStr = JSON.stringify(fresh);
+  const dbStr    = JSON.stringify(db);
+  if (freshStr !== dbStr) {
     db = fresh;
     try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
-    if (document.getElementById('app')) render();
+
+    // Si el cambio viene de ESTE dispositivo (dentro de 3s de un saveDB local)
+    // no re-renderizamos: el usuario ya ve el estado correcto.
+    const msSinceLocalSave = Date.now() - _lastLocalSaveTs;
+    if (msSinceLocalSave > 3000) {
+      // Cambio remoto → re-renderizar con pequeño debounce para no interrumpir
+      clearTimeout(_fbRenderTimer);
+      _fbRenderTimer = setTimeout(() => {
+        if (document.getElementById('app')) render();
+      }, 600);
+    }
   }
+
   // Update live indicator if visible
   const liveEl = document.getElementById('x3-live-time');
   if (liveEl) {
