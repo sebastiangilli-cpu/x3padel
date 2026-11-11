@@ -2,7 +2,15 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <!-- PWA / iOS home screen -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="X3 Padel">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>X3 Padel – Torneos</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -64,6 +72,20 @@
 
 <script>
 // ═══════════════════════════════════════════════════════════════════
+//  VERSION — actualizar este string con cada deploy
+// ═══════════════════════════════════════════════════════════════════
+const APP_BUILD = '20261111_002';
+
+// Al cargar, eliminar parámetro ?v= de la URL sin recargar
+(function() {
+  const u = new URL(location.href);
+  if (u.searchParams.has('v')) {
+    u.searchParams.delete('v');
+    history.replaceState(null, '', u.toString());
+  }
+})();
+
+// ═══════════════════════════════════════════════════════════════════
 //  DATABASE  (localStorage)
 // ═══════════════════════════════════════════════════════════════════
 const DB_KEY = 'x3padel_v2';
@@ -79,7 +101,30 @@ const firebaseConfig = {
   appId: "1:562099829218:web:71595c75ac45d85e2761bb"
 };
 firebase.initializeApp(firebaseConfig);
-const fbRef = firebase.database().ref(DB_KEY);
+const fbRef      = firebase.database().ref(DB_KEY);
+const fbBuildRef = firebase.database().ref('_x3build');
+
+// ── Auto-update: detecta nueva versión y recarga con cache-bust ──────
+let _reloadScheduled = false;
+fbBuildRef.on('value', snap => {
+  const remoteBuild = snap.val();
+  if (remoteBuild && remoteBuild !== APP_BUILD && !_reloadScheduled) {
+    _reloadScheduled = true;
+    // Muestra banner y recarga con param ?v= para bypasear cache iOS
+    let banner = document.getElementById('x3-update-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'x3-update-banner';
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#1A2500;color:#B8FF00;font-size:13px;font-weight:700;padding:10px 16px;text-align:center;z-index:99999;border-bottom:2px solid #B8FF00;';
+      banner.textContent = '🔄 Nueva versión disponible, actualizando...';
+      document.body.appendChild(banner);
+    }
+    setTimeout(() => {
+      const url = location.pathname + '?v=' + remoteBuild;
+      location.replace(url);
+    }, 1500);
+  }
+});
 
 // Carga instantánea desde localStorage (caché), Firebase actualiza en segundos
 let db = (() => {
@@ -90,6 +135,8 @@ let db = (() => {
 function saveDB() {
   try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
   fbRef.set(db).catch(err => console.error('Firebase error:', err));
+  // Publica la versión actual para que los clientes desactualizados se recarguen
+  fbBuildRef.set(APP_BUILD).catch(() => {});
 }
 
 // Normaliza un valor que Firebase puede devolver como objeto {0:x,1:y} en lugar de array
