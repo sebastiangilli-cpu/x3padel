@@ -650,11 +650,6 @@ function publicBracket(t, bm, champion) {
         <div style="padding:12px 8px 4px 12px;min-width:min-content;">
           ${renderBracketVisual(t, bm, [], true)}
         </div>
-        ${bm.filter(m=>BRACKET_ORDER.includes(m.phase)&&m.photo).map(m=>`
-          <div class="border-t border-gray-100 px-4 py-2 flex items-center gap-3 bg-white">
-            <span class="text-xs text-gray-500">${BRACKET_NAMES[m.phase]||m.phase} #${m.matchNum}</span>
-            <button onclick="openPhotoViewer('${m.id}')" class="text-xs font-bold text-blue-600 hover:underline ml-auto">📷 Ver foto</button>
-          </div>`).join('')}
       </div>
     </div>`;
 }
@@ -1851,16 +1846,31 @@ function renderBracketVisual(t, bm, unlockedPhases, readOnly) {
         rounds.push({ phase: ph, slots: matches.map(m => ({ type:'match', data: m })) });
       }
     } else {
-      // Future phase – TBD placeholders: half the previous round's slot count
-      const prevLen = rounds.length > 0 ? rounds[rounds.length-1].slots.length : 2;
-      const nTbd    = Math.max(1, Math.round(prevLen / 2));
-      // If this is the main phase and we have 2 byes, place them in first/last slots
-      const isMain  = ph === bi.mainPhase;
-      const slots   = Array.from({length: nTbd}, (_, i) => {
+      // Future phase – build preview slots from previous round winners where available
+      const prevSlots = rounds.length > 0 ? rounds[rounds.length-1].slots : [];
+      const prevLen   = prevSlots.length;
+      const nTbd      = Math.max(1, Math.round(prevLen / 2));
+      const isMain    = ph === bi.mainPhase;
+      // Only do sequential winner preview for non-previa→main transitions (no BYE slots in prev)
+      const prevHasBye = prevSlots.some(s => s.type === 'bye');
+      const prevMatchSlots = prevSlots.filter(s => s.type === 'match'); // sorted by matchNum already
+
+      const slots = Array.from({length: nTbd}, (_, i) => {
+        // TBD-bye for the main phase when previa had BYEs
         if (isMain && byePairs.length === 2 && i === 0)
           return { type:'tbd-bye', bye: byePairs[0], byeSide:'p1' };
         if (isMain && byePairs.length === 2 && i === nTbd - 1)
           return { type:'tbd-bye', bye: byePairs[1], byeSide:'p2' };
+
+        // For sequential phases (cuartos→semis, semis→final), show partial winners
+        if (!prevHasBye && !isMain) {
+          const s1 = prevMatchSlots[i * 2];
+          const s2 = prevMatchSlots[i * 2 + 1];
+          const m1 = s1?.data, m2 = s2?.data;
+          const p1Label = m1?.winner ? (m1.winner==='p1' ? m1.p1Label : m1.p2Label) : null;
+          const p2Label = m2?.winner ? (m2.winner==='p1' ? m2.p1Label : m2.p2Label) : null;
+          if (p1Label || p2Label) return { type:'pending', p1Label, p2Label };
+        }
         return { type:'tbd' };
       });
       rounds.push({ phase: ph, slots });
@@ -1903,11 +1913,21 @@ function renderBracketVisual(t, bm, unlockedPhases, readOnly) {
         const m = slot.data;
         const isByeMatch = m.p2Label === 'BYE';
         const canEnter   = !readOnly && !isLocked && !isByeMatch && m.p1Label && m.p2Label;
+        const footerBar  = m.photo
+          ? `<div style="padding:3px 10px;font-size:10px;border-top:1px solid #f3f4f6;background:#f0fdf4;display:flex;align-items:center;justify-content:space-between;">
+               <span style="color:#9ca3af;">${[m.matchDay,m.matchTime?m.matchTime+'hs':''].filter(Boolean).join(' ')||''}</span>
+               <button onclick="event.stopPropagation();openPhotoViewer('${m.id}')" style="background:none;border:none;cursor:pointer;font-size:14px;padding:0;" title="Ver foto">📷</button>
+             </div>`
+          : (m.matchDay||m.matchTime)
+            ? `<div style="padding:3px 10px;font-size:10px;color:#9ca3af;border-top:1px solid #f3f4f6;background:#fafafa;">📅 ${[m.matchDay,m.matchTime?m.matchTime+'hs':''].filter(Boolean).join(' ')}</div>`
+            : canEnter
+              ? `<div style="padding:3px 10px;font-size:10px;color:#b8c5b0;border-top:1px solid #f3f4f6;background:#fafafa;text-align:center;">Tocá para cargar resultado</div>`
+              : '';
         html += `<div style="height:${itemH}px;display:flex;align-items:center;padding:3px 6px 3px 2px;box-sizing:border-box;">
           <div onclick="${canEnter?`openScoreModal('${m.id}',true)`:''}" style="width:100%;border-radius:12px;overflow:hidden;border:1.5px solid ${m.winner?'#c6f6d5':'#e5e7eb'};background:white;box-shadow:0 1px 3px rgba(0,0,0,0.07);${canEnter?'cursor:pointer;':''}">
             ${bvRow(m,'p1')}
             ${bvRow(m,'p2')}
-            ${(m.matchDay||m.matchTime)?`<div style="padding:3px 10px;font-size:10px;color:#9ca3af;border-top:1px solid #f3f4f6;background:#fafafa;">📅 ${[m.matchDay,m.matchTime?m.matchTime+'hs':''].filter(Boolean).join(' ')}</div>`:canEnter?`<div style="padding:3px 10px;font-size:10px;color:#b8c5b0;border-top:1px solid #f3f4f6;background:#fafafa;text-align:center;">Tocá para cargar resultado</div>`:''}
+            ${footerBar}
           </div>
         </div>`;
       } else if (slot.type === 'bye') {
@@ -1936,6 +1956,18 @@ function renderBracketVisual(t, bm, unlockedPhases, readOnly) {
         html += `<div style="height:${itemH}px;display:flex;align-items:center;padding:3px 6px 3px 2px;box-sizing:border-box;">
           <div style="width:100%;border-radius:12px;overflow:hidden;border:1.5px solid #d1fae5;background:white;box-shadow:0 1px 3px rgba(0,0,0,0.05);">
             ${isP1 ? byeRow + tbdRow : tbdRow + byeRow}
+          </div>
+        </div>`;
+      } else if (slot.type === 'pending') {
+        // Partial preview: some winners known, others TBD
+        const pendingRow = (label, isFirst) => `<div style="display:flex;align-items:center;gap:5px;padding:7px 10px;background:${label?'white':'#f9fafb'};${isFirst?'border-bottom:1px solid #f3f4f6;':''}">
+          <span style="flex:1;font-size:12px;font-weight:${label?600:400};color:${label?'#166534':'#c4b5b5'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:${label?'normal':'italic'};">${label||'Por definir'}</span>
+          ${label?`<span style="font-size:9px;font-weight:700;color:#78C832;background:#f0fdf4;padding:1px 5px;border-radius:9px;flex-shrink:0;">→ SF</span>`:''}
+        </div>`;
+        html += `<div style="height:${itemH}px;display:flex;align-items:center;padding:3px 6px 3px 2px;box-sizing:border-box;">
+          <div style="width:100%;border-radius:12px;overflow:hidden;border:1.5px dashed #bbf7d0;background:white;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+            ${pendingRow(slot.p1Label, true)}
+            ${pendingRow(slot.p2Label, false)}
           </div>
         </div>`;
       } else {
