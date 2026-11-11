@@ -34,23 +34,16 @@
 <nav style="background:#111111;border-bottom:2px solid #B8FF00" class="sticky top-0 z-50 shadow-lg">
   <div class="max-w-5xl mx-auto px-4 py-2.5 flex items-center justify-between">
     <div class="flex items-center gap-2.5 cursor-pointer" onclick="nav('home')">
-      <!-- X3 Padel Sunchales SVG logo -->
-      <div style="width:44px;height:44px;flex-shrink:0">
+      <div style="width:40px;height:40px;flex-shrink:0">
         <svg viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%">
           <rect width="110" height="110" fill="#000" rx="10"/>
-          <!-- swoosh white outer -->
           <path d="M20,32 C38,8 85,6 100,50" stroke="white" stroke-width="4.5" fill="none" stroke-linecap="round"/>
-          <!-- swoosh green inner -->
           <path d="M24,37 C42,14 86,13 98,56" stroke="#78C832" stroke-width="7" fill="none" stroke-linecap="round"/>
-          <!-- ball -->
           <circle cx="96" cy="60" r="10" fill="#111" stroke="#78C832" stroke-width="2.5"/>
           <path d="M87,55 Q96,61 87,67" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"/>
           <path d="M105,55 Q96,61 105,67" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"/>
-          <!-- X white italic bold -->
           <text x="4" y="77" font-family="'Arial Black',Impact,Arial,sans-serif" font-size="62" font-weight="900" fill="white" font-style="italic">X</text>
-          <!-- 3 green italic bold -->
           <text x="46" y="77" font-family="'Arial Black',Impact,Arial,sans-serif" font-size="62" font-weight="900" fill="#78C832" font-style="italic">3</text>
-          <!-- PADEL white bold -->
           <text x="55" y="100" font-family="'Arial Black',Impact,Arial,sans-serif" font-size="21" font-weight="900" fill="white" font-style="italic" text-anchor="middle" letter-spacing="2">PADEL</text>
         </svg>
       </div>
@@ -59,7 +52,8 @@
         <div class="text-xs leading-tight" style="color:#888;">Sunchales · Torneos</div>
       </div>
     </div>
-    <div class="flex gap-1.5">
+    <!-- Desktop nav (hidden on mobile) -->
+    <div class="hidden sm:flex gap-1.5">
       <button id="nb-home"    onclick="nav('home')"    class="nav-btn">🏠 Inicio</button>
       <button id="nb-results" onclick="nav('results')" class="nav-btn">📊 Resultados</button>
       <button id="nb-admin"   onclick="nav('admin')"   class="nav-btn">⚙️ Admin</button>
@@ -70,10 +64,57 @@
   .nav-btn { padding:.35rem .75rem; border-radius:.5rem; font-size:.75rem; font-weight:600; color:#aaaaaa; transition:all .15s; }
   .nav-btn:hover { background:#1e3300; color:#B8FF00; }
   .nav-btn.active { background:#1e3300; color:#B8FF00; }
+
+  /* ── Bottom tab bar (mobile only) ── */
+  #bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 60;
+    background: #111111;
+    border-top: 2px solid #B8FF00;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (max-width: 639px) { #bottom-nav { display: flex; } }
+  .bn-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 4px 10px;
+    cursor: pointer;
+    transition: background .15s;
+    border: none;
+    background: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .bn-tab:active { background: #1e3300; }
+  .bn-tab .bn-icon { font-size: 22px; line-height: 1; }
+  .bn-tab .bn-label { font-size: 10px; font-weight: 700; color: #666; letter-spacing: .3px; }
+  .bn-tab.active .bn-label { color: #B8FF00; }
+  .bn-tab.active .bn-icon { filter: drop-shadow(0 0 4px #B8FF0088); }
 </style>
 
 <!-- ══ APP ══════════════════════════════════════════════════════════════════ -->
-<div id="app" class="max-w-5xl mx-auto px-4 py-5 fade-in"></div>
+<div id="app" class="max-w-5xl mx-auto px-4 py-5 fade-in" style="padding-bottom:max(80px, calc(64px + env(safe-area-inset-bottom)))"></div>
+
+<!-- ══ BOTTOM NAV (mobile) ══════════════════════════════════════════════════ -->
+<nav id="bottom-nav">
+  <button class="bn-tab" id="bnt-home"    onclick="nav('home')">
+    <span class="bn-icon">🏠</span>
+    <span class="bn-label">Inicio</span>
+  </button>
+  <button class="bn-tab" id="bnt-results" onclick="nav('results')">
+    <span class="bn-icon">📊</span>
+    <span class="bn-label">Resultados</span>
+  </button>
+  <button class="bn-tab" id="bnt-admin"   onclick="nav('admin')">
+    <span class="bn-icon">⚙️</span>
+    <span class="bn-label">Admin</span>
+  </button>
+</nav>
 
 <script>
 // ═══════════════════════════════════════════════════════════════════
@@ -229,16 +270,28 @@ let adminOk = false;
 
 function nav(v) {
   currentView = v;
+  // top nav (desktop)
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const nb = document.getElementById('nb-' + (v==='home'?'home':v==='results'?'results':'admin'));
   if (nb) nb.classList.add('active');
+  // bottom nav (mobile)
+  document.querySelectorAll('.bn-tab').forEach(b => b.classList.remove('active'));
+  const bnKey = v.startsWith('admin') ? 'admin' : v;
+  const bnt = document.getElementById('bnt-' + bnKey);
+  if (bnt) bnt.classList.add('active');
   render();
+  window.scrollTo(0, 0);
 }
 
 function go(v, tId) {
   if (tId !== undefined) activeTId = tId;
   currentView = v;
+  // keep admin tab highlighted in bottom nav
+  document.querySelectorAll('.bn-tab').forEach(b => b.classList.remove('active'));
+  const bnt = document.getElementById('bnt-admin');
+  if (bnt) bnt.classList.add('active');
   render();
+  window.scrollTo(0, 0);
 }
 
 function render() {
@@ -823,18 +876,21 @@ function adminSubHeader(t) {
     { id:'admin-bracket', icon:'🏆', label:'Bracket'    },
   ];
   return `
-    <div class="sticky top-16 z-40 bg-white -mx-4 px-4 pt-3 mb-5" style="border-bottom:1.5px solid #e5e7eb;box-shadow:0 1px 6px rgba(0,0,0,.06)">
-      <div class="flex items-center gap-2 mb-2">
-        <button onclick="nav('admin')" class="text-gray-600 hover:text-gray-700 text-sm font-medium flex-shrink-0">← Admin</button>
-        <span class="text-gray-500 flex-shrink-0">/</span>
+    <div class="sticky top-14 z-40 bg-white -mx-4 px-4 pt-2 mb-5" style="border-bottom:1.5px solid #e5e7eb;box-shadow:0 1px 6px rgba(0,0,0,.06)">
+      <div class="flex items-center gap-2 mb-1">
+        <button onclick="nav('admin')" class="flex items-center gap-1 text-gray-600 text-sm font-semibold py-1.5 pr-2 flex-shrink-0">
+          ← <span class="hidden sm:inline">Admin</span>
+        </button>
+        <span class="text-gray-400 flex-shrink-0">/</span>
         <span class="font-bold text-gray-800 text-sm truncate">${t.name}</span>
       </div>
       <div class="flex gap-0 overflow-x-auto">
         ${tabs.map(tab => `
           <button onclick="go('${tab.id}','${t.id}')"
-            class="px-4 py-2 text-sm font-semibold whitespace-nowrap flex-shrink-0 transition-colors"
-            style="border-bottom:2.5px solid ${currentView===tab.id?'#B8FF00':'transparent'};color:${currentView===tab.id?'#3d6600':'#6b7280'};background:none">
-            ${tab.icon} ${tab.label}
+            class="flex-1 sm:flex-none px-2 sm:px-5 py-3 text-xs sm:text-sm font-bold whitespace-nowrap flex-shrink-0 transition-colors flex flex-col sm:flex-row items-center gap-0.5 sm:gap-1.5"
+            style="border-bottom:3px solid ${currentView===tab.id?'#B8FF00':'transparent'};color:${currentView===tab.id?'#3d6600':'#6b7280'};background:none;min-width:0">
+            <span style="font-size:18px;line-height:1">${tab.icon}</span>
+            <span>${tab.label}</span>
           </button>`).join('')}
       </div>
     </div>`;
@@ -843,14 +899,22 @@ function adminSubHeader(t) {
 function viewAdmin() {
   return `
     <div>
-      <div class="flex items-center justify-between mb-5">
-        <h2 class="text-xl font-bold text-gray-800">Panel de Administración</h2>
-        <div class="flex gap-2 flex-wrap">
-          <button onclick="toggleForm('form-new-t')" class="btn-primary px-4 py-2 rounded-xl text-sm font-bold">+ Nuevo torneo</button>
-          <button onclick="exportDB()" class="btn-sec px-4 py-2 rounded-xl text-sm font-medium" title="Descargar backup de todos los datos">💾 Exportar</button>
-          <button onclick="document.getElementById('import-file').click()" class="btn-sec px-4 py-2 rounded-xl text-sm font-medium" title="Cargar backup">📂 Importar</button>
+      <div class="mb-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-xl font-bold text-gray-800">Administración</h2>
+          <button onclick="adminOk=false;nav('home')" class="btn-sec px-3 py-1.5 rounded-xl text-sm font-medium">Salir</button>
+        </div>
+        <div class="grid grid-cols-3 gap-2 sm:flex sm:gap-2 sm:flex-wrap">
+          <button onclick="toggleForm('form-new-t')" class="btn-primary rounded-xl font-bold flex flex-col sm:flex-row items-center justify-center gap-1 py-3 sm:py-2 sm:px-4 text-xs sm:text-sm">
+            <span class="text-lg sm:text-base">➕</span><span>Nuevo torneo</span>
+          </button>
+          <button onclick="exportDB()" class="btn-sec rounded-xl font-medium flex flex-col sm:flex-row items-center justify-center gap-1 py-3 sm:py-2 sm:px-4 text-xs sm:text-sm">
+            <span class="text-lg sm:text-base">💾</span><span>Exportar</span>
+          </button>
+          <button onclick="document.getElementById('import-file').click()" class="btn-sec rounded-xl font-medium flex flex-col sm:flex-row items-center justify-center gap-1 py-3 sm:py-2 sm:px-4 text-xs sm:text-sm">
+            <span class="text-lg sm:text-base">📂</span><span>Importar</span>
+          </button>
           <input id="import-file" type="file" accept=".json" class="hidden" onchange="importDB(this)">
-          <button onclick="adminOk=false;nav('home')" class="btn-sec px-4 py-2 rounded-xl text-sm font-medium">Salir</button>
         </div>
       </div>
 
@@ -941,16 +1005,16 @@ function viewAdmin() {
                   </div>
                   ${statusBadge}
                 </div>
-                <div class="flex flex-wrap gap-2 mt-4">
-                  <button onclick="go('admin-pairs','${t.id}')" class="chip-btn">👥 Inscriptos (${pCount})</button>
-                  <button onclick="go('admin-zones','${t.id}')" class="chip-btn">🗂 Zonas</button>
-                  <button onclick="go('admin-scores','${t.id}')" class="chip-btn">📊 Resultados</button>
-                  <button onclick="go('admin-bracket','${t.id}')" class="chip-btn">🏆 Bracket</button>
-                  <button onclick="openEditTournament('${t.id}')" class="chip-btn">✏️ Editar</button>
-                  <button onclick="cycleStatus('${t.id}')" class="chip-btn chip-alt">
+                <div class="grid grid-cols-2 gap-2 mt-4 sm:flex sm:flex-wrap">
+                  <button onclick="go('admin-pairs','${t.id}')" class="chip-btn chip-big">👥 Inscriptos (${pCount})</button>
+                  <button onclick="go('admin-zones','${t.id}')" class="chip-btn chip-big">🗂 Zonas</button>
+                  <button onclick="go('admin-scores','${t.id}')" class="chip-btn chip-big">📊 Resultados</button>
+                  <button onclick="go('admin-bracket','${t.id}')" class="chip-btn chip-big">🏆 Bracket</button>
+                  <button onclick="openEditTournament('${t.id}')" class="chip-btn chip-big">✏️ Editar</button>
+                  <button onclick="cycleStatus('${t.id}')" class="chip-btn chip-alt chip-big col-span-2 sm:col-span-1">
                     ${t.status==='inscripciones'?'🔒 Cerrar inscripciones':t.status==='en_curso'?'⏹ Finalizar torneo':'✓ Finalizado'}
                   </button>
-                  <button onclick="delTournament('${t.id}')" class="chip-btn chip-danger">🗑 Eliminar</button>
+                  <button onclick="delTournament('${t.id}')" class="chip-btn chip-danger chip-big col-span-2 sm:col-span-1">🗑 Eliminar</button>
                 </div>
               </div>`;
           }).join('')}
@@ -2752,6 +2816,8 @@ style.textContent = `
   .btn-sec:hover { background:#e5e7eb; }
   .chip-btn { padding:.3rem .75rem; border-radius:.5rem; font-size:.75rem; font-weight:600; background:#f3f4f6; color:#374151; border:none; cursor:pointer; transition:all .15s; }
   .chip-btn:hover { background:#e5e7eb; }
+  .chip-big { padding:.6rem .75rem; font-size:.8rem; border-radius:.75rem; }
+  @media (max-width:639px) { .chip-big { padding:.7rem .5rem; font-size:.78rem; text-align:center; } }
   .chip-alt { background:#edfad0; color:#3d6600; }
   .chip-alt:hover { background:#ddf5aa; }
   .chip-danger { background:#fef2f2; color:#dc2626; }
