@@ -2232,46 +2232,11 @@ function viewAdminBracket() {
     <div>
       ${adminSubHeader(t)}
 
-      <!-- Classified pairs -->
-      ${classif.length > 0 ? (() => {
-        // Compute seeding & bye info for display
-        const _firsts  = classif.filter(c=>c.rank===1);
-        const _seconds = classif.filter(c=>c.rank===2);
-        const _thirds  = classif.filter(c=>c.rank===3);
-        const _seeded  = [..._firsts, ..._seconds, ..._thirds];
-        const _n       = _seeded.length;
-        const _bSize   = nextPow2(_n);
-        const _nByes   = _bSize - _n;
-        const _phMap   = BRACKET_PHASE_MAP[_bSize] || BRACKET_PHASE_MAP[32];
-        const _byeIds  = new Set(_seeded.slice(0, _nByes).map(c=>c.pair.id));
-        const _previaName = BRACKET_NAMES[_phMap.prev] || _phMap.prev;
-        const _mainName   = BRACKET_NAMES[_phMap.main] || _phMap.main;
-        return `
-        <div class="bg-white rounded-2xl border border-gray-100 p-5 mb-5 shadow-sm">
-          <div class="flex items-center justify-between mb-3">
-            <h3 class="font-bold text-gray-700 text-sm">Clasificadas de zonas (${classif.length})</h3>
-            ${classif.length >= 2 ? `<button onclick="${bmPhases.length === 0 ? 'genInitialBracket()' : "confirm('¿Regenerar bracket? Se borrarán todos los resultados del bracket actual.')&&genInitialBracket()"}" class="btn-primary px-4 py-2 rounded-lg text-sm font-bold">${bmPhases.length === 0 ? '⚡ Generar bracket' : '🔄 Regenerar bracket'}</button>` : ''}
-          </div>
-          ${_nByes > 0 ? `
-          <div class="text-xs mb-3 px-3 py-2 rounded-lg font-medium" style="background:#edfad0;color:#3d6600">
-            📋 Formato: ${_nByes} primer${_nByes>1?'as':'a'} pasan directo a <strong>${_mainName}</strong> · ${_n - _nByes} juegan la previa (${_previaName})
-          </div>` : ''}
-          <div class="grid sm:grid-cols-2 gap-2">
-            ${_seeded.map(c => {
-              const isBye = _byeIds.has(c.pair.id);
-              return `
-              <div class="flex items-center gap-2 px-3 py-2 rounded-lg" style="background:${isBye?'#1A2500':'#f5f5f5'}">
-                <span class="text-xs font-bold px-1.5 rounded" style="${isBye?'background:#2d4000;color:#B8FF00':'background:#e0e0e0;color:#555'}">${c.zone}${c.rank}</span>
-                <span class="text-sm flex-1 truncate" style="${isBye?'color:#B8FF00':'color:#444'}">${c.pair.p1.split(' ')[0]} / ${c.pair.p2.split(' ')[0]}</span>
-                ${isBye ? `<span class="text-xs font-bold flex-shrink-0" style="color:#78C832">BYE ✓</span>` : ''}
-              </div>`;
-            }).join('')}
-          </div>
-        </div>`;
-      })() : `
-        <div class="text-center py-8 text-gray-600 text-sm mb-5">
-          Las clasificadas aparecerán aquí cuando se carguen los resultados de zonas.
-        </div>`}
+      <!-- Bracket actions bar -->
+      <div class="flex items-center justify-between mb-4">
+        <span class="text-sm text-gray-500">${classif.length} clasificada${classif.length!==1?'s':''} de zonas</span>
+        ${classif.length >= 2 ? `<button onclick="${bmPhases.length === 0 ? 'genInitialBracket()' : "confirm('¿Regenerar bracket? Se borrarán todos los resultados del bracket actual.')&&genInitialBracket()"}" class="btn-primary px-4 py-2 rounded-lg text-sm font-bold">${bmPhases.length === 0 ? '⚡ Generar bracket' : '🔄 Regenerar bracket'}</button>` : ''}
+      </div>
 
       <!-- Champion banner -->
       ${champion ? `
