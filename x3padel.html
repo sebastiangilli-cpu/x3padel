@@ -107,6 +107,8 @@ function normSets(sets) {
   });
 }
 
+let lastSyncTime = null;
+
 // Listener en tiempo real: todos los dispositivos se actualizan solos
 fbRef.on('value', snapshot => {
   const data = snapshot.val();
@@ -116,10 +118,18 @@ fbRef.on('value', snapshot => {
     pairs:       normArr(data?.pairs),
     matches:     normArr(data?.matches).map(m => ({ ...m, sets: normSets(m.sets) })),
   };
+  lastSyncTime = new Date();
   if (JSON.stringify(fresh) !== JSON.stringify(db)) {
     db = fresh;
     try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
     if (document.getElementById('app')) render();
+  }
+  // Update live indicator if visible
+  const liveEl = document.getElementById('x3-live-time');
+  if (liveEl) {
+    const h = lastSyncTime.getHours().toString().padStart(2,'0');
+    const min = lastSyncTime.getMinutes().toString().padStart(2,'0');
+    liveEl.textContent = `${h}:${min}`;
   }
 });
 
@@ -433,11 +443,19 @@ function viewResults() {
         <div class="text-2xl font-black" style="color:#B8FF00">${champion}</div>
       </div>`;
   } else {
+    const isLive = t.status === 'en_curso';
     html += `
       <div class="rounded-2xl p-4 mb-5 text-center" style="background:#1A2500;border:2px solid #B8FF00">
         <h2 class="text-2xl font-black text-white">${t.name}</h2>
-        <p class="text-sm mt-0.5" style="color:#B8FF00">${t.status==='en_curso'?'Resultados en vivo':'Torneo finalizado'}</p>
-      </div>`;
+        <div class="flex items-center justify-center gap-2 mt-1">
+          <p class="text-sm" style="color:#B8FF00">${isLive?'Resultados en vivo':'Torneo finalizado'}</p>
+          ${isLive ? `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(184,255,0,0.12);border-radius:999px;padding:2px 8px;">
+            <span style="width:7px;height:7px;border-radius:50%;background:#B8FF00;animation:livePulse 1.4s ease-in-out infinite;display:inline-block;"></span>
+            <span style="font-size:10px;font-weight:700;color:#B8FF00;">EN VIVO · <span id="x3-live-time">${lastSyncTime?String(lastSyncTime.getHours()).padStart(2,'0')+':'+String(lastSyncTime.getMinutes()).padStart(2,'0'):''}</span></span>
+          </span>` : ''}
+        </div>
+      </div>
+      <style>@keyframes livePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.3)}}</style>`;
   }
 
   if (zones.length === 0) return html + `<div class="text-center text-gray-600 py-8">Las zonas aún no fueron asignadas.</div>`;
@@ -2650,12 +2668,24 @@ function openScoreModal(matchId, isBracket) {
 
   document.getElementById('sm-winner').classList.add('hidden');
   document.getElementById('sm-error').classList.add('hidden');
-  // Show/hide schedule section for bracket matches
+  // Show/hide schedule+photo section for bracket matches
   const schedEl = document.getElementById('sm-schedule');
   if (scoreModal.isBracket) {
     schedEl.classList.remove('hidden');
     document.getElementById('sm-day').value = m.matchDay || '';
     document.getElementById('sm-time').value = m.matchTime || '';
+    // Photo preview
+    const prevEl = document.getElementById('sm-photo-preview');
+    const photoInput = document.getElementById('sm-photo-input');
+    if (photoInput) photoInput.value = '';
+    if (m.photo) {
+      prevEl.classList.remove('hidden');
+      document.getElementById('sm-photo-img').src = m.photo;
+      document.getElementById('sm-photo-label').textContent = '🔄 Cambiar foto';
+    } else {
+      prevEl.classList.add('hidden');
+      document.getElementById('sm-photo-label').textContent = '📷 Adjuntar foto';
+    }
   } else {
     schedEl.classList.add('hidden');
   }
@@ -2744,10 +2774,11 @@ function saveScoreModal() {
       }
     }
   }
-  // Save day/time for bracket matches
+  // Save day/time/photo for bracket matches
   if (scoreModal.isBracket) {
     m.matchDay  = document.getElementById('sm-day').value  || null;
     m.matchTime = document.getElementById('sm-time').value || null;
+    // Photo is saved immediately on selection via smPhotoSelected; nothing extra here
   }
   saveDB();
   // Auto-advance bracket when all matches in current phase are done
@@ -2883,6 +2914,29 @@ function closeScoreModal() {
   document.body.style.overflow = '';
 }
 
+function smPhotoSelected(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const m = db.matches.find(x=>x.id===scoreModal.matchId); if (!m) return;
+    m.photo = e.target.result;
+    // Update preview immediately (don't save yet — wait for Guardar)
+    document.getElementById('sm-photo-img').src = m.photo;
+    document.getElementById('sm-photo-preview').classList.remove('hidden');
+    document.getElementById('sm-photo-label').textContent = '🔄 Cambiar foto';
+  };
+  reader.readAsDataURL(file);
+}
+
+function smPhotoRemove() {
+  const m = db.matches.find(x=>x.id===scoreModal.matchId); if (!m) return;
+  m.photo = null;
+  document.getElementById('sm-photo-preview').classList.add('hidden');
+  document.getElementById('sm-photo-label').textContent = '📷 Adjuntar foto';
+  const inp = document.getElementById('sm-photo-input');
+  if (inp) inp.value = '';
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  LOCK / UNLOCK
 // ═══════════════════════════════════════════════════════════════════
@@ -2993,14 +3047,27 @@ function downloadViewerPhoto() {
       <button onclick="closeScoreModal()" class="text-gray-500 hover:text-white text-xl leading-none">✕</button>
     </div>
     <div class="p-5">
-      <!-- Bracket: day/time scheduling (hidden for zone matches) -->
-      <div id="sm-schedule" class="hidden mb-4 flex gap-2">
-        <select id="sm-day" class="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none bg-white text-gray-700 flex-1">
-          <option value="">Día</option>
-          <option>Lunes</option><option>Martes</option><option>Miércoles</option>
-          <option>Jueves</option><option>Viernes</option><option>Sábado</option><option>Domingo</option>
-        </select>
-        <input id="sm-time" type="time" class="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none text-gray-700 flex-1">
+      <!-- Bracket: day/time/photo (hidden for zone matches) -->
+      <div id="sm-schedule" class="hidden mb-4 space-y-2">
+        <div class="flex gap-2">
+          <select id="sm-day" class="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none bg-white text-gray-700 flex-1">
+            <option value="">Día</option>
+            <option>Lunes</option><option>Martes</option><option>Miércoles</option>
+            <option>Jueves</option><option>Viernes</option><option>Sábado</option><option>Domingo</option>
+          </select>
+          <input id="sm-time" type="time" class="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none text-gray-700 flex-1">
+        </div>
+        <!-- Photo -->
+        <div class="flex items-center gap-3">
+          <label class="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-gray-300 text-xs text-gray-500 hover:border-green-400 hover:text-green-600 flex-1 justify-center">
+            <input id="sm-photo-input" type="file" accept="image/*" class="hidden" onchange="smPhotoSelected(this)">
+            <span id="sm-photo-label">📷 Adjuntar foto</span>
+          </label>
+          <div id="sm-photo-preview" class="hidden">
+            <img id="sm-photo-img" class="h-12 w-12 rounded-lg object-cover cursor-pointer" onclick="openPhotoViewer(scoreModal.matchId)">
+            <button onclick="smPhotoRemove()" class="text-xs text-red-400 block text-center mt-0.5">Quitar</button>
+          </div>
+        </div>
       </div>
       <!-- Teams -->
       <div class="flex items-center justify-between mb-5">
