@@ -11,11 +11,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="X3 Padel">
   <meta name="mobile-web-app-capable" content="yes">
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
-  <link rel="apple-touch-icon" sizes="167x167" href="icon-167.png">
-  <link rel="apple-touch-icon" sizes="152x152" href="icon-152.png">
-  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="manifest" href="manifest.json?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png?v=2">
+  <link rel="apple-touch-icon" sizes="167x167" href="icon-167.png?v=2">
+  <link rel="apple-touch-icon" sizes="152x152" href="icon-152.png?v=2">
+  <link rel="apple-touch-icon" href="icon-192.png?v=2">
   <title>X3 Padel – Torneos</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -120,7 +120,7 @@
 // ═══════════════════════════════════════════════════════════════════
 //  VERSION — actualizar este string con cada deploy
 // ═══════════════════════════════════════════════════════════════════
-const APP_BUILD = '20261111_004';
+const APP_BUILD = '20261111_005';
 
 // Al cargar, eliminar parámetro ?v= de la URL sin recargar
 (function() {
@@ -166,8 +166,7 @@ fbBuildRef.on('value', snap => {
       document.body.appendChild(banner);
     }
     setTimeout(() => {
-      const url = location.pathname + '?v=' + remoteBuild;
-      location.replace(url);
+      location.reload(true);
     }, 1500);
   }
 });
@@ -182,8 +181,14 @@ function saveDB() {
   _lastLocalSaveTs = Date.now(); // marcar para evitar re-render del propio write
   try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch(e) {}
   fbRef.set(db).catch(err => console.error('Firebase error:', err));
-  // Publica la versión actual para que los clientes desactualizados se recarguen
-  fbBuildRef.set(APP_BUILD).catch(() => {});
+  // NO escribimos fbBuildRef aquí — solo se publica manualmente al deployar (ver publishBuild)
+}
+
+// Llamar manualmente desde admin al subir una nueva versión
+function publishBuild() {
+  fbBuildRef.set(APP_BUILD)
+    .then(() => alert('✅ Versión ' + APP_BUILD + ' publicada. Los dispositivos se actualizarán automáticamente.'))
+    .catch(e => alert('Error: ' + e));
 }
 
 // Normaliza un valor que Firebase puede devolver como objeto {0:x,1:y} en lugar de array
@@ -921,8 +926,8 @@ function viewAdmin() {
           <h2 class="text-xl font-bold text-gray-800">Administración</h2>
           <button onclick="adminOk=false;nav('home')" class="btn-sec px-3 py-1.5 rounded-xl text-sm font-medium">Salir</button>
         </div>
-        <div class="grid grid-cols-3 gap-2 sm:flex sm:gap-2 sm:flex-wrap">
-          <button onclick="toggleForm('form-new-t')" class="btn-primary rounded-xl font-bold flex flex-col sm:flex-row items-center justify-center gap-1 py-3 sm:py-2 sm:px-4 text-xs sm:text-sm">
+        <div class="grid grid-cols-2 gap-2 sm:flex sm:gap-2 sm:flex-wrap">
+          <button onclick="toggleForm('form-new-t')" class="btn-primary rounded-xl font-bold flex flex-col sm:flex-row items-center justify-center gap-1 py-3 sm:py-2 sm:px-4 text-xs sm:text-sm col-span-2 sm:col-span-1">
             <span class="text-lg sm:text-base">➕</span><span>Nuevo torneo</span>
           </button>
           <button onclick="exportDB()" class="btn-sec rounded-xl font-medium flex flex-col sm:flex-row items-center justify-center gap-1 py-3 sm:py-2 sm:px-4 text-xs sm:text-sm">
@@ -932,6 +937,9 @@ function viewAdmin() {
             <span class="text-lg sm:text-base">📂</span><span>Importar</span>
           </button>
           <input id="import-file" type="file" accept=".json" class="hidden" onchange="importDB(this)">
+          <button onclick="publishBuild()" class="btn-sec rounded-xl font-medium flex flex-col sm:flex-row items-center justify-center gap-1 py-3 sm:py-2 sm:px-4 text-xs sm:text-sm" title="Publicar nueva versión para que todos los dispositivos se actualicen">
+            <span class="text-lg sm:text-base">🚀</span><span>Publicar</span>
+          </button>
         </div>
       </div>
 
